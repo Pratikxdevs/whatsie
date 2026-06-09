@@ -35,7 +35,7 @@
 
 ```
 src/
-├── adapters/        # Platform adapters (Evolution API, Discord, etc.)
+├── adapters/        # Platform adapters (Evolution API for WhatsApp)
 ├── ai/              # AI provider integrations
 ├── AiInteg/         # AI bridge endpoints
 ├── api/             # Auth API (Clerk integration)
@@ -196,7 +196,7 @@ All errors follow the structure defined in `errors/codes.ts`:
 ### Structured Error Codes
 
 - Format: `{DOMAIN}_{NUMBER}` (e.g., `AUTH_001`, `DB_003`, `WA_004`)
-- Domains: API, DB, AUTH, WA (WhatsApp), TG (Telegram), TW (Twitter), Q (Queue), WS (WebSocket), SYS (System)
+- Domains: API, DB, AUTH, WA (WhatsApp), Q (Queue), WS (WebSocket), SYS (System)
 - Registry in `errors/codes.ts` with descriptions and factory function
 
 ### Route-Level Error Handling

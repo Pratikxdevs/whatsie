@@ -80,14 +80,7 @@ src/__tests__/leads-api.test.ts
 src/__tests__/conversations-api.test.ts
 src/__tests__/analytics-api.test.ts
 src/__tests__/billing-usage.test.ts
-src/__tests__/telegram-webhook.test.ts
 src/__tests__/response-router.test.ts
-src/__tests__/discord-adapter.test.ts
-src/__tests__/discord-normalizer.test.ts
-src/__tests__/discord-worker.test.ts
-src/__tests__/discord-startup.test.ts
-src/__tests__/discord-rate-limit.test.ts
-src/__tests__/discord-workspace.test.ts
 src/__tests__/integration/tenant-isolation.test.ts
 src/__tests__/integration/whatsapp-pipeline.test.ts
 ```
@@ -119,10 +112,6 @@ In-memory `Map<string, string>` backing for Redis operations:
 
 Mock Queue and Worker classes with:
 - `add`, `addBulk`, `getJob`, `getJobs`, `getJobCounts`, `clean`, `close`
-
-### Discord.js Mock
-
-Mock Client class with `login`, `destroy`, `isReady`, `on`, `channels.fetch`
 
 ## Test Helpers (`src/__tests__/helpers.ts`)
 
@@ -304,13 +293,6 @@ it('passes valid body through', () => {
 | Metrics | `metrics/metrics.test.ts` | Prometheus metrics |
 | Tenant isolation | `integration/tenant-isolation.test.ts` | AsyncLocalStorage + RLS |
 | WhatsApp pipeline | `integration/whatsapp-pipeline.test.ts` | Normalize → queue pipeline |
-| Discord adapter | `__tests__/discord-adapter.test.ts` | Connect/disconnect lifecycle |
-| Discord normalizer | `__tests__/discord-normalizer.test.ts` | Discord message normalization |
-| Discord worker | `__tests__/discord-worker.test.ts` | Discord background processing |
-| Discord startup | `__tests__/discord-startup.test.ts` | Bot startup logic |
-| Discord rate limit | `__tests__/discord-rate-limit.test.ts` | Rate limiting |
-| Discord workspace | `__tests__/discord-workspace.test.ts` | Workspace management |
-| Telegram webhook | `__tests__/telegram-webhook.test.ts` | Telegram webhook processing |
 | Phone utils | `utils/__tests__/phone.test.ts` | Phone number parsing |
 | Email utils | `utils/__tests__/email.test.ts` | Email validation |
 | URL utils | `utils/__tests__/url.test.ts` | URL utilities |
