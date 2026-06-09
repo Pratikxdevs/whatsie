@@ -137,16 +137,17 @@ router.delete('/:id', async (req, res) => {
 router.patch('/:id', validateBody(updateLeadSchema), async (req, res) => {
   try {
     const tenantId = (req as AuthenticatedRequest).user!.tenantId;
+    const leadId = String(req.params.id);
 
     const existing = await prisma.lead.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: leadId, tenantId },
     });
     if (!existing) {
       return res.status(404).json(createAppError(ErrorCode.DB_005, 'Lead not found'));
     }
 
     const lead = await prisma.lead.update({
-      where: { id: req.params.id },
+      where: { id: leadId },
       data: req.body,
       include: {
         _count: { select: { conversations: true } },
