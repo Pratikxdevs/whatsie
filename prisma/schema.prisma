@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  plan      String   @default("free")
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  users               User[]
+  bots                Bot[]
+  leads               Lead[]
+  conversations       Conversation[]
+  messages            Message[]
+  workflows           Workflow[]
+  workflowExecutions  WorkflowExecution[]
+  apiKeys             ApiKey[]
+  events              Event[]
+  billingUsages       BillingUsage[]
+  aiLogs              AiLog[]
+}
+
+model User {
+  id            String         @id @default(uuid())
+  clerkId       String?        @unique
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  email         String         @unique
+  name          String?
+  passwordHash  String?
+  role          String         @default("viewer") // admin, agent, viewer
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+  credentials   UserCredential[]
+  bots          Bot[]
+
+  @@index([tenantId])
+  @@index([clerkId])
+}
+
+model Bot {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  displayName String
+  platform    String
+  sessionName String?  @unique
+  status      String   @default("active")
+  config      Json?    @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  leads       Lead[]
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model Lead {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  botId     String?
+  bot       Bot?     @relation(fields: [botId], references: [id])
+  name      String?
+  phone     String?
+  email     String?
+  source    String?
+  status    String   @default("new")
+  attributes Json?   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations      Conversation[]
+  workflowExecutions WorkflowExecution[]
+
+  @@index([tenantId])
+  @@index([botId])
+}
+
+model Conversation {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  leadId         String
+  lead           Lead     @relation(fields: [leadId], references: [id])
+  platform       String
+  externalUserId String
+  status         String   @default("open")
+  lastMessageAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  messages       Message[]
+
+  @@index([tenantId])
+  @@index([leadId])
+}
+
+model Message {
+  id                String   @id @default(uuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id])
+  direction         String   // in, out
+  content           String?
+  messageType       String   @default("text")
+  platformMessageId String?
+  metadata          Json?    @default("{}")
+  createdAt         DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([platformMessageId])
+}
+
+model Workflow {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  name          String
+  triggerIntent String
+  steps         Json     @default("[]") // [{ key: "name", prompt: "What is your name?" }]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  executions    WorkflowExecution[]
+
+  @@index([tenantId])
+}
+
+model WorkflowExecution {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  workflowId       String
+  workflow         Workflow @relation(fields: [workflowId], references: [id])
+  leadId           String
+  lead             Lead     @relation(fields: [leadId], references: [id])
+  currentStepIndex Int      @default(0)
+  status           String   @default("active") // active, completed, cancelled
+  collectedData    Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([leadId])
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  keyHash   String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model Event {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  type      String
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model BillingUsage {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  metric      String
+  quantity    BigInt
+  periodStart DateTime
+  periodEnd   DateTime
+
+  @@index([tenantId])
+  @@unique([tenantId, metric, periodStart])
+}
+
+model AiLog {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  model            String
+  promptTokens     Int
+  completionTokens Int
+  cost             Decimal?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model UserCredential {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  provider  String   // 'groq', 'openai', 'openrouter', 'gemini', 'evolution', 'telegram'
+  keyName   String   // display name like "My Groq Key"
+  keyValue  String   // the actual API key value
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider, keyName])
+  @@index([userId])
+}

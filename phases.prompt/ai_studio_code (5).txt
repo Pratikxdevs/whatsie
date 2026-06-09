@@ -1,0 +1,194 @@
+469
+470 LAYER 5: WORKER POOL
+471 ---------------------
+472 PURPOSE: Process queued messages through business logic pipeline.
+473
+474 Worker Process:
+475 - Stateless Node.js processes
+476 - Pull jobs from BullMQ
+477 - Can scale horizontally (10, 50, 100+ instances)
+478 - Each worker handles one message at a time
+479 - Kubernetes HPA scales based on queue depth
+480
+481 Processing Pipeline (per message):
+482
+483 1. Session Manager
+484 - Load from Redis: session:{tenantId}:{userId}
+485 - Schema: {
+486 conversationState: 'idle' | 'in_flow' | 'waiting_input'
+487 currentWorkflowId: string | null
+488 currentStep: number
+489 variables: Record<string, any>
+490 lastMessageAt: timestamp
+491 }
+492 - TTL: 24 hours of inactivity
+493 - Context Window: Load last 10 messages from PostgreSQL
+494
+495 2. Intent Classifier
+496 - Fast, cheap layer before AI
+497 - Methods:
+498 a) Regex patterns: "price", "cost" → intent:pricing
+499 b) Keyword matching: "stop", "unsubscribe" → intent:optout
+500 c) Button payloads: payload includes intent
+501 d) Small ML model (optional): DistilBERT fine-tuned
+502 - Returns: { intent: string, confidence: number }
+503 - Threshold: confidence > 0.8 to skip AI
+504
+505 3. Rule Engine
+506 - Hard-coded business rules
+507 - Examples:
+508 * If intent:pricing → send pricing message
+509 * If intent:optout → mark user opted_out, stop processing
+510 * If message contains "human" → route to agent
+511 - Rules stored in PostgreSQL, cached in Redis
+512 - Returns: { handled: boolean, response?: string }
+513
+514 4. Workflow Engine
+515 - Check if user is mid-workflow
+516 - Load workflow definition from DB
+517 - Workflow schema:
+518 {
+519 id: string
+520 name: string
+521 trigger: { type: 'keyword' | 'intent' | 'event', value: string }
+522 steps: Array<{
+523 id: string
+524 type: 'message' | 'wait' | 'condition' | 'api_call' | 'update_lead'
+525 config: object
+526 nextStep: string | null
+527 }>
+528 }
+529 - Execute current step
+530 - Update session with next step
+531 - Returns: { handled: boolean, response?: string }
+532
+533 5. AI Orchestrator (if rules + workflows didn't handle)
+534 - See Layer 6 for details
+535
+536 6. CRM Writer
+537 - Update lead status
+538 - Log event in events table
+539 - Update conversation last_message_at
+540 - See Layer 7 for details
+541
+542 Output:
+543 - Response object: { text, attachments?, buttons?, quickReplies? }
+544 - Updated session state
+545 - CRM updates (lead stage, events)
+546
+547 Worker Health:
+548 - Expose /health endpoint
+549 - Prometheus metrics: jobs_processed, processing_time, errors
+550 - Graceful shutdown on SIGTERM (finish current job)
+551
+552 Critical Rules:
+553 - Workers are STATELESS (session in Redis, not memory)
+554 - No worker-to-worker communication
+555 - Failed jobs go back to queue for retry
+556 - Log every step with tenantId + userId for tracing
+557
+558 ---
+559
+560 LAYER 6: AI ORCHESTRATION LAYER
+561 --------------------------------
+562 PURPOSE: Control AI usage, costs, and quality.
+563
+564 Components:
+565
+566 Cost Controller:
+567 - Per-tenant token usage tracking (PostgreSQL)
+568 - Redis counter: tokens_used:{tenantId}:{month}
+569 - Hard limits per plan:
+570 * Free tier: 10K tokens/month
+571 * Pro tier: 100K tokens/month
+572 * Enterprise: unlimited
+573 - If limit exceeded: fallback to canned responses
+574 - Alert tenant at 80% usage
+575
+576 Model Router:
+577 - Strategy: cheap → expensive
+578 - Tier 1: GPT-3.5-turbo (cheap, fast)
+579 * Use for: simple questions, FAQs
+580 * Token limit: 500 input + 150 output
+581 - Tier 2: GPT-4-turbo (expensive, smart)
+582 * Use for: complex requests, escalations
+583 * Token limit: 2000 input + 500 output
+584 - Tier 3: Claude Opus (most expensive, best reasoning)
+585 * Use for: critical decisions, sentiment analysis
+586 - Decision logic:
+587 if (message.length < 100 && !requiresContext) → tier1
+588 else if (conversationHistory.length < 5) → tier1
+589 else → tier2
+590
+591 Prompt Builder:
+592 - System prompt template:
+593 ```
+594 You are a helpful assistant for {businessName}.
+595 Current lead: {leadName}, status: {leadStage}
+596 Context: {lastNMessages}
+597 Goal: {currentWorkflowGoal}
+598 Constraints: {responseConstraints}
+599 ```
+600 - Inject:
+601 * Tenant business info
+602 * Lead data from CRM
+603 * Conversation history (last 5 turns)
+604 * Current workflow goal
+605 * Response constraints (length, tone, etc.)
+606
+607 RAG Engine (optional):
+608 - Vector DB: Pinecone or Qdrant
+609 - Embed tenant knowledge base:
+610 * FAQs
+611 * Product docs
+612 * Past successful responses
+613 - On query:
+614 1. Embed user message
+615 2. Similarity search (top 3 docs)
+616 3. Inject into prompt context
+617 - Fallback: If no relevant docs, use LLM only
+618
+619 Guardrails:
+620 - Content filter: OpenAI moderation API
+621 - PII scrubber: Regex + NER model
+622 * Remove: credit cards, SSN, API keys
+623 * Mask: phone numbers (show last 4)
+624 - Compliance check:
+625 * No medical advice
+626 * No financial advice
+627 * No legal advice
+628 - Fallback: If violation detected, send canned response
+629
+630 Response Post-Processor:
+631 - Length check: Max 2000 chars (WhatsApp limit)
+632 - Format: Markdown → platform-specific
+633 - Link extraction: Shorten URLs if needed
+634 - Emoji normalization
+635
+636 AI Call Flow:
+637 1. Check if user message passes guardrails
+638 2. Check tenant token quota
+639 3. Select model tier
+640 4. Build prompt with context + RAG
+641 5. Call LLM API
+642 6. Log usage: tokens, cost, latency
+643 7. Post-process response
+644 8. Return to worker
+645
+646 Error Handling:
+647 - Rate limit (429): Exponential backoff, max 3 retries
+648 - Timeout: 30s max, fallback to canned response
+649 - Content violation: Log + fallback
+650 - API error: Retry once, then fallback
+651
+652 Monitoring:
+653 - Metrics: tokens_per_request, cost_per_tenant, latency
+654 - Alerts: cost spike, error rate >5%, latency >10s
+655
+656 Critical Rules:
+657 - NEVER call AI without checking quota
+658 - ALWAYS log token usage for billing
+659 - Fallback to canned responses on failure
+660 - Never expose raw API errors to user
+661
+662 ---

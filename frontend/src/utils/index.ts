@@ -1,0 +1,1 @@
+export { setupErrorToasts } from './errors';

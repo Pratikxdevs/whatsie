@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evolution API v2.3 - Endpoint Reference</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #09090b; color: #e4e4e7; padding: 2rem; }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; color: #fafafa; }
+    .subtitle { color: #71717a; margin-bottom: 2rem; font-size: 0.95rem; }
+    .stats { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+    .stat { background: #18181b; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 1rem 1.5rem; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #4ade80; }
+    .stat-label { font-size: 0.75rem; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; }
+    .category { margin-bottom: 2rem; }
+    .category h2 { font-size: 1.1rem; color: #a1a1aa; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    table { width: 100%; border-collapse: collapse; background: #18181b; border-radius: 8px; overflow: hidden; }
+    th { text-align: left; padding: 0.75rem 1rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: #71717a; background: #1c1c20; }
+    td { padding: 0.6rem 1rem; border-top: 1px solid rgba(255,255,255,0.04); font-size: 0.875rem; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .method { font-weight: 600; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; display: inline-block; min-width: 55px; text-align: center; }
+    .method-GET { background: #172554; color: #60a5fa; }
+    .method-POST { background: #14532d; color: #4ade80; }
+    .method-PUT { background: #451a03; color: #fbbf24; }
+    .method-DELETE { background: #450a0a; color: #f87171; }
+    .path { font-family: 'SF Mono', 'Fira Code', monospace; color: #d4d4d8; font-size: 0.8rem; }
+    .desc { color: #a1a1aa; }
+    .filter-bar { margin-bottom: 1.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    .filter-bar input { background: #18181b; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 0.5rem 1rem; color: #e4e4e7; font-size: 0.875rem; width: 300px; }
+    .filter-bar input:focus { outline: none; border-color: #4ade80; }
+    .filter-btn { background: #1c1c20; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 0.4rem 0.8rem; color: #a1a1aa; font-size: 0.75rem; cursor: pointer; transition: all 0.15s; }
+    .filter-btn:hover, .filter-btn.active { background: #27272a; color: #fafafa; border-color: rgba(255,255,255,0.15); }
+    .tag { display: inline-block; font-size: 0.65rem; padding: 1px 6px; border-radius: 3px; background: #27272a; color: #a1a1aa; margin-left: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Evolution API v2.3 Endpoints</h1>
+  <p class="subtitle">Complete endpoint reference extracted from Postman collection</p>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-value">120+</div><div class="stat-label">Total Endpoints</div></div>
+    <div class="stat"><div class="stat-value">12</div><div class="stat-label">Categories</div></div>
+    <div class="stat"><div class="stat-value">7</div><div class="stat-label">Chatbot Integrations</div></div>
+    <div class="stat"><div class="stat-value">6</div><div class="stat-label">Event Systems</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" id="search" placeholder="Search endpoints..." oninput="filterTable()">
+    <button class="filter-btn active" onclick="filterMethod('all', this)">All</button>
+    <button class="filter-btn" onclick="filterMethod('GET', this)">GET</button>
+    <button class="filter-btn" onclick="filterMethod('POST', this)">POST</button>
+    <button class="filter-btn" onclick="filterMethod('PUT', this)">PUT</button>
+    <button class="filter-btn" onclick="filterMethod('DELETE', this)">DELETE</button>
+  </div>
+
+  <div id="endpoints"></div>
+
+  <script>
+    const categories = [
+      {
+        name: "Instance Management",
+        endpoints: [
+          { method: "POST", path: "/instance/create", desc: "Create a new WhatsApp instance", tag: "core" },
+          { method: "GET", path: "/instance/fetchInstances", desc: "List all instances", tag: "core" },
+          { method: "GET", path: "/instance/connect/{instance}", desc: "Connect instance / get QR code", tag: "core" },
+          { method: "POST", path: "/instance/restart/{instance}", desc: "Restart an instance", tag: "core" },
+          { method: "POST", path: "/instance/setPresence/{instance}", desc: "Set online/offline presence", tag: "" },
+          { method: "GET", path: "/instance/connectionState/{instance}", desc: "Get connection status", tag: "core" },
+          { method: "DELETE", path: "/instance/logout/{instance}", desc: "Logout instance (keep DB)", tag: "" },
+          { method: "DELETE", path: "/instance/delete/{instance}", desc: "Delete instance permanently", tag: "core" },
+        ]
+      },
+      {
+        name: "Messaging",
+        endpoints: [
+          { method: "POST", path: "/message/sendText/{instance}", desc: "Send text message", tag: "core" },
+          { method: "POST", path: "/message/sendMedia/{instance}", desc: "Send media (URL or file)", tag: "" },
+          { method: "POST", path: "/message/sendPtv/{instance}", desc: "Send push-to-view video", tag: "" },
+          { method: "POST", path: "/message/sendWhatsAppAudio/{instance}", desc: "Send audio as WhatsApp voice note", tag: "" },
+          { method: "POST", path: "/message/sendStatus/{instance}", desc: "Send status/stories update", tag: "" },
+          { method: "POST", path: "/message/sendSticker/{instance}", desc: "Send sticker", tag: "" },
+          { method: "POST", path: "/message/sendLocation/{instance}", desc: "Send location pin", tag: "" },
+          { method: "POST", path: "/message/sendContact/{instance}", desc: "Send contact card", tag: "" },
+          { method: "POST", path: "/message/sendReaction/{instance}", desc: "React to a message", tag: "" },
+          { method: "POST", path: "/message/sendPoll/{instance}", desc: "Send poll", tag: "" },
+          { method: "POST", path: "/message/sendList/{instance}", desc: "Send interactive list", tag: "" },
+          { method: "POST", path: "/message/sendButtons/{instance}", desc: "Send button message", tag: "" },
+          { method: "POST", path: "/message/sendTemplate/{instance}", desc: "Send template message", tag: "" },
+          { method: "POST", path: "/message/updateBlockStatus/{instance}", desc: "Block/unblock a contact", tag: "" },
+        ]
+      },
+      {
+        name: "Chat Operations",
+        endpoints: [
+          { method: "POST", path: "/chat/whatsappNumbers/{instance}", desc: "Check if number is on WhatsApp", tag: "" },
+          { method: "POST", path: "/chat/markMessageAsRead/{instance}", desc: "Mark messages as read", tag: "" },
+          { method: "POST", path: "/chat/archiveChat/{instance}", desc: "Archive a chat", tag: "" },
+          { method: "POST", path: "/chat/markChatUnread/{instance}", desc: "Mark chat as unread", tag: "" },
+          { method: "DELETE", path: "/chat/deleteMessageForEveryone/{instance}", desc: "Delete message for all", tag: "" },
+          { method: "POST", path: "/chat/fetchProfilePictureUrl/{instance}", desc: "Get profile picture URL", tag: "" },
+          { method: "POST", path: "/chat/getBase64FromMediaMessage/{instance}", desc: "Get media as base64", tag: "" },
+          { method: "POST", path: "/chat/updateMessage/{instance}", desc: "Edit a sent message", tag: "" },
+          { method: "POST", path: "/chat/sendPresence/{instance}", desc: "Send typing/recording indicator", tag: "" },
+          { method: "POST", path: "/chat/findContacts/{instance}", desc: "Search contacts", tag: "" },
+          { method: "POST", path: "/chat/findMessages/{instance}", desc: "Search messages", tag: "" },
+          { method: "POST", path: "/chat/findStatusMessage/{instance}", desc: "Find status messages", tag: "" },
+          { method: "POST", path: "/chat/findChats/{instance}", desc: "Search/list chats", tag: "" },
+          { method: "POST", path: "/chat/fetchBusinessProfile/{instance}", desc: "Get WhatsApp Business profile", tag: "" },
+          { method: "POST", path: "/chat/fetchProfile/{instance}", desc: "Get user profile info", tag: "" },
+          { method: "POST", path: "/chat/updateProfileName/{instance}", desc: "Change profile name", tag: "" },
+          { method: "POST", path: "/chat/updateProfileStatus/{instance}", desc: "Change profile status/about", tag: "" },
+          { method: "POST", path: "/chat/updateProfilePicture/{instance}", desc: "Change profile picture", tag: "" },
+          { method: "DELETE", path: "/chat/removeProfilePicture/{instance}", desc: "Remove profile picture", tag: "" },
+          { method: "GET", path: "/chat/fetchPrivacySettings/{instance}", desc: "Get privacy settings", tag: "" },
+          { method: "POST", path: "/chat/updatePrivacySettings/{instance}", desc: "Update privacy settings", tag: "" },
+        ]
+      },
+      {
+        name: "Groups",
+        endpoints: [
+          { method: "POST", path: "/group/create/{instance}", desc: "Create a new group", tag: "" },
+          { method: "POST", path: "/group/updateGroupPicture/{instance}", desc: "Change group picture", tag: "" },
+          { method: "POST", path: "/group/updateGroupSubject/{instance}", desc: "Change group name", tag: "" },
+          { method: "POST", path: "/group/updateGroupDescription/{instance}", desc: "Change group description", tag: "" },
+          { method: "GET", path: "/group/inviteCode/{instance}", desc: "Get group invite link", tag: "" },
+          { method: "POST", path: "/group/revokeInviteCode/{instance}", desc: "Revoke and regenerate invite", tag: "" },
+          { method: "POST", path: "/group/sendInvite/{instance}", desc: "Send invite link to numbers", tag: "" },
+          { method: "GET", path: "/group/inviteInfo/{instance}", desc: "Get group info from invite link", tag: "" },
+          { method: "GET", path: "/group/findGroupInfos/{instance}", desc: "Get group info by JID", tag: "" },
+          { method: "GET", path: "/group/fetchAllGroups/{instance}", desc: "List all groups", tag: "" },
+          { method: "GET", path: "/group/participants/{instance}", desc: "List group participants", tag: "" },
+          { method: "POST", path: "/group/updateParticipant/{instance}", desc: "Add/remove/promote/demote members", tag: "" },
+          { method: "POST", path: "/group/updateSetting/{instance}", desc: "Change group settings", tag: "" },
+          { method: "POST", path: "/group/toggleEphemeral/{instance}", desc: "Toggle disappearing messages", tag: "" },
+          { method: "DELETE", path: "/group/leaveGroup/{instance}", desc: "Leave a group", tag: "" },
+        ]
+      },
+      {
+        name: "Settings & Labels",
+        endpoints: [
+          { method: "POST", path: "/proxy/set/{instance}", desc: "Configure proxy", tag: "" },
+          { method: "GET", path: "/proxy/find/{instance}", desc: "Get proxy config", tag: "" },
+          { method: "POST", path: "/settings/set/{instance}", desc: "Set instance settings", tag: "" },
+          { method: "GET", path: "/settings/find/{instance}", desc: "Get instance settings", tag: "" },
+          { method: "GET", path: "/label/findLabels/{instance}", desc: "List all labels", tag: "" },
+          { method: "POST", path: "/label/handleLabel/{instance}", desc: "Create/update/delete labels", tag: "" },
+        ]
+      },
+      {
+        name: "Webhooks & Event Systems",
+        endpoints: [
+          { method: "POST", path: "/webhook/set/{instance}", desc: "Configure webhook URL", tag: "core" },
+          { method: "GET", path: "/webhook/find/{instance}", desc: "Get webhook config", tag: "" },
+          { method: "POST", path: "/websocket/set/{instance}", desc: "Configure WebSocket", tag: "" },
+          { method: "GET", path: "/websocket/find/{instance}", desc: "Get WebSocket config", tag: "" },
+          { method: "POST", path: "/rabbitmq/set/{instance}", desc: "Configure RabbitMQ", tag: "" },
+          { method: "GET", path: "/rabbitmq/find/{instance}", desc: "Get RabbitMQ config", tag: "" },
+          { method: "POST", path: "/sqs/set/{instance}", desc: "Configure AWS SQS", tag: "" },
+          { method: "GET", path: "/sqs/find/{instance}", desc: "Get SQS config", tag: "" },
+          { method: "POST", path: "/nats/set/{instance}", desc: "Configure NATS", tag: "" },
+          { method: "GET", path: "/nats/find/{instance}", desc: "Get NATS config", tag: "" },
+          { method: "POST", path: "/pusher/set/{instance}", desc: "Configure Pusher", tag: "" },
+          { method: "GET", path: "/pusher/find/{instance}", desc: "Get Pusher config", tag: "" },
+        ]
+      },
+      {
+        name: "Typebot Integration",
+        endpoints: [
+          { method: "POST", path: "/typebot/create/{instance}", desc: "Create Typebot flow", tag: "chatbot" },
+          { method: "GET", path: "/typebot/find/{instance}", desc: "List Typebot flows", tag: "chatbot" },
+          { method: "GET", path: "/typebot/fetch/:typebotId/{instance}", desc: "Get specific Typebot", tag: "chatbot" },
+          { method: "PUT", path: "/typebot/update/:typebotId/{instance}", desc: "Update Typebot", tag: "chatbot" },
+          { method: "DELETE", path: "/typebot/delete/:typebotId/{instance}", desc: "Delete Typebot", tag: "chatbot" },
+          { method: "POST", path: "/typebot/start/{instance}", desc: "Start Typebot session", tag: "chatbot" },
+          { method: "POST", path: "/typebot/changeStatus/{instance}", desc: "Change session status", tag: "chatbot" },
+          { method: "GET", path: "/typebot/fetchSessions/:typebotId/{instance}", desc: "List active sessions", tag: "chatbot" },
+          { method: "POST", path: "/typebot/settings/{instance}", desc: "Set default settings", tag: "chatbot" },
+          { method: "GET", path: "/typebot/fetchSettings/{instance}", desc: "Get default settings", tag: "chatbot" },
+        ]
+      },
+      {
+        name: "Evolution Bot Integration",
+        endpoints: [
+          { method: "POST", path: "/evolutionBot/create/{instance}", desc: "Create Evolution Bot", tag: "chatbot" },
+          { method: "GET", path: "/evolutionBot/find/{instance}", desc: "List bots", tag: "chatbot" },
+          { method: "GET", path: "/evolutionBot/fetch/:evolutionBotId/{instance}", desc: "Get specific bot", tag: "chatbot" },
+          { method: "PUT", path: "/evolutionBot/update/:evolutionBotId/{instance}", desc: "Update bot", tag: "chatbot" },
+          { method: "DELETE", path: "/evolutionBot/delete/:evolutionBotId/{instance}", desc: "Delete bot", tag: "chatbot" },
+          { method: "POST", path: "/evolutionBot/changeStatus/{instance}", desc: "Change session status", tag: "chatbot" },
+          { method: "GET", path: "/evolutionBot/fetchSessions/:evolutionBotId/{instance}", desc: "List sessions", tag: "chatbot" },
+          { method: "POST", path: "/evolutionBot/settings/{instance}", desc: "Set default settings", tag: "chatbot" },
+          { method: "GET", path: "/evolutionBot/fetchSettings/{instance}", desc: "Get default settings", tag: "chatbot" },
+        ]
+      },
+      {
+        name: "OpenAI Integration",
+        endpoints: [
+          { method: "POST", path: "/openai/creds/{instance}", desc: "Set OpenAI credentials", tag: "chatbot" },
+          { method: "GET", path: "/openai/creds/{instance}", desc: "Get OpenAI credentials", tag: "chatbot" },
+          { method: "DELETE", path: "/openai/creds/:openaiCredsId/{instance}", desc: "Delete credentials", tag: "chatbot" },
+          { method: "POST", path: "/openai/create/{instance}", desc: "Create OpenAI bot", tag: "chatbot" },
+          { method: "GET", path: "/openai/find/{instance}", desc: "List OpenAI bots", tag: "chatbot" },
+          { method: "GET", path: "/openai/fetch/:openaiBotId/{instance}", desc: "Get specific bot", tag: "chatbot" },
+          { method: "PUT", path: "/openai/update/:openaiBotId/{instance}", desc: "Update bot", tag: "chatbot" },
+          { method: "DELETE", path: "/openai/delete/:openaiBotId/{instance}", desc: "Delete bot", tag: "chatbot" },
+          { method: "POST", path: "/openai/changeStatus/{instance}", desc: "Change session status", tag: "chatbot" },
+          { method: "GET", path: "/openai/fetchSessions/:openaiBotId/{instance}", desc: "List sessions", tag: "chatbot" },
+          { method: "POST", path: "/openai/settings/{instance}", desc: "Set default settings", tag: "chatbot" },
+          { method: "GET", path: "/openai/fetchSettings/{instance}", desc: "Get default settings", tag: "chatbot" },
+        ]
+      },
+      {
+        name: "Dify / Flowise / N8N / EvoAI",
+        endpoints: [
+          { method: "POST", path: "/dify/create/{instance}", desc: "Create Dify bot", tag: "chatbot" },
+          { method: "GET", path: "/dify/find/{instance}", desc: "List Dify bots", tag: "chatbot" },
+          { method: "GET", path: "/dify/fetch/:difyId/{instance}", desc: "Get Dify bot", tag: "chatbot" },
+          { method: "PUT", path: "/dify/update/:difyId/{instance}", desc: "Update Dify bot", tag: "chatbot" },
+          { method: "DELETE", path: "/dify/delete/:difyId/{instance}", desc: "Delete Dify bot", tag: "chatbot" },
+          { method: "POST", path: "/flowise/create/{instance}", desc: "Create Flowise bot", tag: "chatbot" },
+          { method: "GET", path: "/flowise/find/{instance}", desc: "List Flowise bots", tag: "chatbot" },
+          { method: "GET", path: "/flowise/fetch/:flowiseId/{instance}", desc: "Get Flowise bot", tag: "chatbot" },
+          { method: "PUT", path: "/flowise/update/:flowiseId/{instance}", desc: "Update Flowise bot", tag: "chatbot" },
+          { method: "DELETE", path: "/flowise/delete/:flowiseId/{instance}", desc: "Delete Flowise bot", tag: "chatbot" },
+          { method: "POST", path: "/n8n/create/{instance}", desc: "Create N8N bot", tag: "chatbot" },
+          { method: "GET", path: "/n8n/find/{instance}", desc: "List N8N bots", tag: "chatbot" },
+          { method: "GET", path: "/n8n/fetch/:n8nId/{instance}", desc: "Get N8N bot", tag: "chatbot" },
+          { method: "PUT", path: "/n8n/update/:n8nId/{instance}", desc: "Update N8N bot", tag: "chatbot" },
+          { method: "DELETE", path: "/n8n/delete/:n8nId/{instance}", desc: "Delete N8N bot", tag: "chatbot" },
+          { method: "POST", path: "/evoai/create/{instance}", desc: "Create EvoAI bot", tag: "chatbot" },
+          { method: "GET", path: "/evoai/find/{instance}", desc: "List EvoAI bots", tag: "chatbot" },
+          { method: "GET", path: "/evoai/fetch/:evoaiId/{instance}", desc: "Get EvoAI bot", tag: "chatbot" },
+          { method: "PUT", path: "/evoai/update/:evoaiId/{instance}", desc: "Update EvoAI bot", tag: "chatbot" },
+          { method: "DELETE", path: "/evoai/delete/:evoaiId/{instance}", desc: "Delete EvoAI bot", tag: "chatbot" },
+        ]
+      },
+      {
+        name: "Integrations",
+        endpoints: [
+          { method: "POST", path: "/chatwoot/set/{instance}", desc: "Configure Chatwoot", tag: "integration" },
+          { method: "GET", path: "/chatwoot/find/{instance}", desc: "Get Chatwoot config", tag: "integration" },
+        ]
+      },
+      {
+        name: "Templates, Media & System",
+        endpoints: [
+          { method: "POST", path: "/template/create/{instance}", desc: "Create message template", tag: "" },
+          { method: "GET", path: "/template/find/{instance}", desc: "List templates", tag: "" },
+          { method: "POST", path: "/s3/getMedia/{instance}", desc: "Get media from S3", tag: "" },
+          { method: "POST", path: "/s3/getMediaUrl/{instance}", desc: "Get media URL from S3", tag: "" },
+          { method: "POST", path: "/call/offer/{instance}", desc: "Send fake call", tag: "" },
+          { method: "POST", path: "/webhook/evolution", desc: "Evolution channel webhook receiver", tag: "core" },
+          { method: "GET", path: "/", desc: "Get API info", tag: "" },
+          { method: "GET", path: "/metrics", desc: "Get API metrics", tag: "" },
+        ]
+      },
+    ];
+
+    function renderEndpoints() {
+      const container = document.getElementById('endpoints');
+      let html = '';
+      categories.forEach(cat => {
+        html += `<div class="category" data-category="${cat.name}">`;
+        html += `<h2>${cat.name} <span class="tag">${cat.endpoints.length} endpoints</span></h2>`;
+        html += '<table><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody>';
+        cat.endpoints.forEach(ep => {
+          html += `<tr data-method="${ep.method}" data-search="${(ep.method + ' ' + ep.path + ' ' + ep.desc).toLowerCase()}">`;
+          html += `<td><span class="method method-${ep.method}">${ep.method}</span></td>`;
+          html += `<td class="path">${ep.path}</td>`;
+          html += `<td class="desc">${ep.desc}</td>`;
+          html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+      });
+      container.innerHTML = html;
+    }
+
+    function filterTable() {
+      const query = document.getElementById('search').value.toLowerCase();
+      document.querySelectorAll('table tr[data-search]').forEach(row => {
+        row.style.display = row.dataset.search.includes(query) ? '' : 'none';
+      });
+    }
+
+    let currentMethod = 'all';
+    function filterMethod(method, btn) {
+      currentMethod = method;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('table tr[data-search]').forEach(row => {
+        const matchMethod = method === 'all' || row.dataset.method === method;
+        row.style.display = matchMethod ? '' : 'none';
+      });
+    }
+
+    renderEndpoints();
+  </script>
+</body>
+</html>

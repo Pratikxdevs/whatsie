@@ -1,0 +1,1646 @@
+================================================================================
+PRODUCTION-READY MULTI-PLATFORM BOT ARCHITECTURE
+Complete System Design Document
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. System Overview
+2. Technology Stack
+3. Layer-by-Layer Architecture (0-9)
+4. Supporting Infrastructure
+5. Data Models
+6. Message Flow
+7. Rate Limiting Strategy
+8. Multi-Tenancy Design
+9. Observability & Monitoring
+10. Security & Compliance
+11. Deployment Architecture
+12. Scaling Strategy
+
+================================================================================
+1. SYSTEM OVERVIEW
+================================================================================
+
+PURPOSE
+-------
+Multi-tenant SaaS platform enabling businesses to deploy AI-powered bots across
+8 messaging platforms (WhatsApp, Telegram, Discord, FB Messenger, Instagram, 
+MS Teams, Twitch, Twitter/X).
+
+CORE CAPABILITIES
+-----------------
+- Unified message handling across all platforms
+- AI-powered conversation with cost controls
+- CRM integration for lead management
+- Workflow automation engine
+- Real-time dashboard and analytics
+- Per-tenant customization and billing
+
+KEY DESIGN PRINCIPLES
+---------------------
+1. Platform-agnostic core (never couple to specific APIs)
+2. Multi-tenancy from Layer 0 (tenant isolation is foundational)
+3. Queue-driven architecture (survive spikes and API failures)
+4. AI as a tool, not the brain (rules/workflows before LLM calls)
+5. Bidirectional normalization (parse inbound, render outbound)
+
+================================================================================
+2. TECHNOLOGY STACK
+================================================================================
+
+RUNTIME & LANGUAGE
+------------------
+- Node.js 20+ LTS
+- TypeScript 5.3+
+- ES Modules (not CommonJS)
+
+CORE FRAMEWORKS
+---------------
+- Express.js (API server)
+- BullMQ 5.x (job queue)
+- Prisma 5.x (ORM)
+- Socket.IO (real-time layer)
+
+DATABASES
+---------
+- PostgreSQL 15+ (persistent storage)
+  - Row-level security (RLS) for multi-tenancy
+  - Full-text search for message history
+- Redis 7+ (in-memory)
+  - BullMQ backing store
+  - Session state
+  - Rate limit counters
+  - Idempotency cache
+
+PLATFORM APIS
+-------------
+WhatsApp:
+  - Evolution API (self-hosted Docker)
+  - Repo: github.com/EvolutionAPI/evolution-api
+  - Why: REST + WebSocket + Webhook out of box
+
+Telegram:
+  - tdlib/telegram-bot-api (self-hosted Docker)
+  - Repo: github.com/tdlib/telegram-bot-api
+  - Why: Official local server, no file size limits
+
+Discord:
+  - discord.js SDK
+  - Repo: github.com/discordjs/discord.js
+  - Why: Most mature Node.js wrapper
+
+Facebook Messenger + Instagram:
+  - Meta Graph API (official, no wrapper needed)
+  - Docs: developers.facebook.com/docs/graph-api
+  - Why: One API for both platforms
+
+Microsoft Teams:
+  - botbuilder-js SDK
+  - Repo: github.com/microsoft/botbuilder-js
+  - Why: Official Microsoft SDK
+
+Twitch:
+  - twurple SDK
+  - Repo: github.com/twurple/twurple
+  - Why: Full EventSub + Chat support
+
+Twitter/X:
+  - twitter-api-v2
+  - Repo: github.com/PLhery/node-twitter-api-v2
+  - Why: Best TypeScript support, streaming included
+
+AI/ML
+-----
+- OpenAI SDK (GPT-4, GPT-3.5-turbo)
+- Anthropic SDK (Claude) - optional
+- Pinecone or Qdrant (vector DB for RAG)
+- Bottleneck.js (rate limiting orchestrator)
+
+OBSERVABILITY
+-------------
+- Pino (structured JSON logging)
+- Prometheus (metrics collection)
+- Grafana (metrics visualization)
+- OpenTelemetry (distributed tracing)
+- Sentry (error tracking)
+
+DEPLOYMENT
+----------
+- Docker + Docker Compose (local dev)
+- Kubernetes (production)
+- AWS/GCP/Azure (cloud provider)
+- GitHub Actions (CI/CD)
+
+================================================================================
+3. LAYER-BY-LAYER ARCHITECTURE
+================================================================================
+
+LAYER 0: MULTI-TENANCY & ISOLATION
+-----------------------------------
+PURPOSE: Ensure every request is scoped to a tenant. Prevents data leaks.
+
+Components:
+  - Tenant Router
+    * Extracts tenantId from API key or JWT
+    * Injects into request context
+    * Validates tenant exists and is active
+
+  - Tenant Context Middleware
+    * Sets AsyncLocalStorage context
+    * All downstream code reads tenantId from context
+    * Database queries auto-filter by tenantId
+
+  - Tenant Config Store (Redis)
+    * Per-tenant settings: AI model, rate limits, workflows
+    * Cache with 5min TTL, fallback to PostgreSQL
+
+  - Row-Level Security (PostgreSQL)
+    * Every table has tenantId column
+    * RLS policies enforce filtering
+    * Example: CREATE POLICY tenant_isolation ON messages 
+      USING (tenantId = current_setting('app.tenantId')::uuid)
+
+Critical Rules:
+  - NEVER allow tenantId to be set by user input
+  - ALWAYS derive tenantId from authenticated credentials
+  - Database queries MUST include WHERE tenantId = $1
+  - Test with 2+ tenants to verify isolation
+
+---
+
+LAYER 1: PLATFORM API ADAPTERS
+-------------------------------
+PURPOSE: Abstract platform-specific APIs behind unified interface.
+
+Components per Platform:
+
+  WhatsApp Adapter:
+    - Evolution API Docker container on localhost:8080
+    - Send: POST /message/sendText/{instanceId}
+    - Receive: Webhook at /gateway/whatsapp
+    - Health check: GET /instance/connectionState/{instanceId}
+
+  Telegram Adapter:
+    - tdlib/telegram-bot-api Docker on localhost:8081
+    - Send: POST /bot{token}/sendMessage
+    - Receive: Webhook at /gateway/telegram
+    - Long polling fallback if webhook fails
+
+  Discord Adapter:
+    - discord.js Client with WebSocket gateway
+    - Send: channel.send() or user.send()
+    - Receive: Events via 'messageCreate' listener
+    - Reconnection logic with exponential backoff
+
+  Meta Adapter (FB + Instagram):
+    - Direct HTTPS to graph.facebook.com/v25.0
+    - Send: POST /{pageId}/messages
+    - Receive: Webhook at /gateway/meta (handles both)
+    - Token: Page Access Token (never-expiring)
+    - Constraint: 24-hour messaging window
+
+  Teams Adapter:
+    - BotFrameworkAdapter from botbuilder
+    - Send: context.sendActivity()
+    - Receive: Bot handles POST /api/messages
+    - Direct Line for WebSocket fallback
+
+  Twitch Adapter:
+    - @twurple/api, @twurple/eventsub-ws, @twurple/chat
+    - Send: chatClient.say()
+    - Receive: EventSub WebSocket + Chat IRC
+    - Separate connections for events vs chat
+
+  Twitter Adapter:
+    - twitter-api-v2 with OAuth 2.0
+    - Send: client.v2.tweet() or client.v2.sendDM()
+    - Receive: Webhook (paid tier) or polling
+    - Rate limit: Strict, see Layer 8
+
+Interface Contract:
+  All adapters implement:
+    - sendMessage(recipient, content, options)
+    - parseIncomingWebhook(req.body) → NormalizedMessage
+    - verifySignature(req) → boolean
+    - healthCheck() → { status, latency }
+
+Critical Rules:
+  - Adapters are STATELESS
+  - No business logic inside adapters
+  - Errors bubble up to gateway layer
+  - Retry logic handled by queue, not adapter
+
+---
+
+LAYER 2: WEBHOOK GATEWAY
+-------------------------
+PURPOSE: Single secure entry point for all platform webhooks.
+
+Components:
+
+  Signature Validator:
+    - WhatsApp: HMAC-SHA256 with Evolution API secret
+    - Telegram: SHA256 hash of bot token
+    - Discord: Ed25519 signature verification
+    - Meta: SHA256 HMAC with app secret
+    - Teams: JWT validation with bot credentials
+    - Twitch: HMAC-SHA256 with secret
+    - Twitter: HMAC-SHA256 with consumer secret
+
+  Tenant Authentication:
+    - Extract API key from X-API-Key header or webhook path
+    - Lookup tenantId from api_keys table
+    - Reject if tenant is suspended or over quota
+    - Rate limit per tenant: 100 webhooks/second
+
+  Idempotency Layer (Redis):
+    - Key pattern: idempotency:{platform}:{messageId}
+    - Value: "processed"
+    - TTL: 24 hours
+    - Check: IF EXISTS, return 200 immediately
+    - Set: After normalization, before queueing
+
+  Request Logger:
+    - Log every webhook with:
+      * Timestamp, tenantId, platform, messageId
+      * Processing time, status code
+      * Error details if failed
+    - Forward to observability stack
+
+Endpoints:
+  POST /gateway/whatsapp     → WhatsApp Evolution API webhook
+  POST /gateway/telegram     → Telegram Bot API webhook
+  POST /gateway/discord      → Discord interactions endpoint
+  POST /gateway/meta         → Meta (FB + Instagram) webhook
+  POST /api/messages         → MS Teams Bot Framework webhook
+  POST /gateway/twitch       → Twitch EventSub webhook
+  POST /gateway/twitter      → Twitter Account Activity webhook
+
+  GET /gateway/:platform     → Verification endpoint (Meta, Telegram)
+
+Critical Rules:
+  - ALWAYS verify signature before processing
+  - Return 200 OK within 3 seconds (queue async processing)
+  - Never trust message content for tenant identification
+  - Log failed signature validations (possible attack)
+
+---
+
+LAYER 3: MESSAGE NORMALIZER (BIDIRECTIONAL)
+--------------------------------------------
+PURPOSE: Convert platform payloads to/from unified internal format.
+
+Unified Message Schema:
+  {
+    tenantId: string (UUID)
+    platform: 'whatsapp' | 'telegram' | 'discord' | 'messenger' | 'instagram' | 'teams' | 'twitch' | 'twitter'
+    userId: string (platform-specific ID, e.g. PSID, Discord snowflake)
+    conversationId: string (thread/channel ID)
+    message: {
+      text: string | null
+      attachments: Array<{
+        type: 'image' | 'video' | 'audio' | 'file'
+        url: string
+        mimeType: string
+        size: number
+      }>
+      quickReplies: Array<{ label: string, payload: string }> | null
+    }
+    type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'location' | 'contact' | 'sticker' | 'button_click'
+    timestamp: ISO8601 string
+    metadata: {
+      raw: object (original platform payload)
+      replyTo: string | null (message ID being replied to)
+      isForwarded: boolean
+      mentions: string[] (user IDs mentioned)
+    }
+  }
+
+Inbound Parser:
+  - Accepts raw webhook payload per platform
+  - Extracts core fields into unified schema
+  - Downloads attachments to temp storage (S3/local)
+  - Stores raw payload in metadata.raw for debugging
+  - Returns NormalizedMessage
+
+Outbound Renderer:
+  - Accepts unified response format
+  - Converts to platform-specific payload
+  - Maps rich content:
+    * Buttons → WhatsApp list messages
+    * Buttons → Telegram inline keyboards
+    * Buttons → Discord components
+    * Buttons → Meta quick replies
+  - Handles fallbacks when feature unsupported
+  - Returns platform-ready payload
+
+Platform-Specific Mappings:
+
+  WhatsApp (Evolution API):
+    Inbound: webhook.data.message.conversation → message.text
+             webhook.data.message.imageMessage → attachment
+    Outbound: text → {number, text}
+              buttons → {number, buttonMessage: {text, buttons}}
+
+  Telegram:
+    Inbound: update.message.text → message.text
+             update.message.photo → attachment
+    Outbound: text → {chat_id, text}
+              buttons → {chat_id, text, reply_markup: {inline_keyboard}}
+
+  Discord:
+    Inbound: message.content → message.text
+             message.attachments → attachments array
+    Outbound: text → {content}
+              embeds → {embeds: [{title, description, fields}]}
+
+  Meta (FB + Instagram):
+    Inbound: messaging[0].message.text → message.text
+             messaging[0].message.attachments → attachments
+    Outbound: text → {recipient: {id}, message: {text}}
+              buttons → {message: {attachment: {type: template, buttons}}}
+
+  Teams:
+    Inbound: activity.text → message.text
+             activity.attachments → attachments
+    Outbound: text → {type: message, text}
+              cards → {type: message, attachments: [AdaptiveCard]}
+
+  Twitch:
+    Inbound: event.message.text → message.text
+    Outbound: text → chatClient.say(channel, text)
+
+  Twitter:
+    Inbound: direct_message_events[0].message_create.message_data.text → text
+    Outbound: text → {event: {type: message_create, message_data: {text}}}
+
+Critical Rules:
+  - NEVER lose information during normalization
+  - metadata.raw preserves original payload for debugging
+  - Outbound rendering must handle missing features gracefully
+  - Test with real webhook payloads from each platform
+
+---
+
+LAYER 4: QUEUE LAYER (BullMQ + Redis)
+--------------------------------------
+PURPOSE: Buffer message processing, survive spikes, enable retries.
+
+Queue Topology:
+
+  Per-Platform Queues:
+    - whatsapp-messages
+    - telegram-messages
+    - discord-messages
+    - meta-messages (FB + Instagram combined)
+    - teams-messages
+    - twitch-messages
+    - twitter-messages
+
+  Priority Lanes (within each queue):
+    - VIP users: priority 1
+    - Standard: priority 5
+    - Bulk/automated: priority 10
+
+  Special Queues:
+    - scheduled-messages (delayed jobs for follow-ups)
+    - webhook-retries (failed webhook deliveries)
+    - ai-requests (long-running AI calls, separate pool)
+
+Job Schema:
+  {
+    id: string (auto-generated)
+    tenantId: string
+    platform: string
+    normalizedMessage: NormalizedMessage
+    priority: number
+    attempts: number
+    timestamp: number
+    metadata: {
+      queuedAt: timestamp
+      retryCount: number
+      originalJobId: string (if retry)
+    }
+  }
+
+Queue Configuration:
+
+  Concurrency:
+    - whatsapp-messages: 50 workers
+    - telegram-messages: 100 workers
+    - discord-messages: 200 workers (highest throughput)
+    - meta-messages: 30 workers (rate limited)
+    - others: 50 workers
+
+  Retry Strategy:
+    - Max attempts: 5
+    - Backoff: exponential (1min, 2min, 4min, 8min, 16min)
+    - Conditions:
+      * Retry on network errors
+      * Retry on 429 rate limit (after backoff)
+      * Retry on 5xx server errors
+      * NO retry on 4xx client errors (except 429)
+
+  Dead Letter Queue (DLQ):
+    - After 5 failed attempts → move to dlq-{platform}
+    - DLQ never auto-retries
+    - Manual replay via admin dashboard
+    - Alert on DLQ depth > 100
+
+  Job Cleanup:
+    - Completed jobs: retain 24 hours then delete
+    - Failed jobs: retain 7 days then delete
+    - DLQ: retain 30 days
+
+Redis Configuration:
+  - Persistence: RDB snapshot every 5 minutes + AOF
+  - Memory policy: allkeys-lru
+  - Dedicated Redis instance for queues (not shared with cache)
+  - Cluster mode if handling >100K messages/day
+
+Critical Rules:
+  - NEVER process messages synchronously in webhook handler
+  - Queue immediately, respond 200 OK, process async
+  - Monitor queue depth per platform
+  - Alert if queue depth > 10K or processing time > 30s
+
+---
+
+LAYER 5: WORKER POOL
+---------------------
+PURPOSE: Process queued messages through business logic pipeline.
+
+Worker Process:
+  - Stateless Node.js processes
+  - Pull jobs from BullMQ
+  - Can scale horizontally (10, 50, 100+ instances)
+  - Each worker handles one message at a time
+  - Kubernetes HPA scales based on queue depth
+
+Processing Pipeline (per message):
+
+  1. Session Manager
+     - Load from Redis: session:{tenantId}:{userId}
+     - Schema: {
+         conversationState: 'idle' | 'in_flow' | 'waiting_input'
+         currentWorkflowId: string | null
+         currentStep: number
+         variables: Record<string, any>
+         lastMessageAt: timestamp
+       }
+     - TTL: 24 hours of inactivity
+     - Context Window: Load last 10 messages from PostgreSQL
+
+  2. Intent Classifier
+     - Fast, cheap layer before AI
+     - Methods:
+       a) Regex patterns: "price", "cost" → intent:pricing
+       b) Keyword matching: "stop", "unsubscribe" → intent:optout
+       c) Button payloads: payload includes intent
+       d) Small ML model (optional): DistilBERT fine-tuned
+     - Returns: { intent: string, confidence: number }
+     - Threshold: confidence > 0.8 to skip AI
+
+  3. Rule Engine
+     - Hard-coded business rules
+     - Examples:
+       * If intent:pricing → send pricing message
+       * If intent:optout → mark user opted_out, stop processing
+       * If message contains "human" → route to agent
+     - Rules stored in PostgreSQL, cached in Redis
+     - Returns: { handled: boolean, response?: string }
+
+  4. Workflow Engine
+     - Check if user is mid-workflow
+     - Load workflow definition from DB
+     - Workflow schema:
+       {
+         id: string
+         name: string
+         trigger: { type: 'keyword' | 'intent' | 'event', value: string }
+         steps: Array<{
+           id: string
+           type: 'message' | 'wait' | 'condition' | 'api_call' | 'update_lead'
+           config: object
+           nextStep: string | null
+         }>
+       }
+     - Execute current step
+     - Update session with next step
+     - Returns: { handled: boolean, response?: string }
+
+  5. AI Orchestrator (if rules + workflows didn't handle)
+     - See Layer 6 for details
+
+  6. CRM Writer
+     - Update lead status
+     - Log event in events table
+     - Update conversation last_message_at
+     - See Layer 7 for details
+
+Output:
+  - Response object: { text, attachments?, buttons?, quickReplies? }
+  - Updated session state
+  - CRM updates (lead stage, events)
+
+Worker Health:
+  - Expose /health endpoint
+  - Prometheus metrics: jobs_processed, processing_time, errors
+  - Graceful shutdown on SIGTERM (finish current job)
+
+Critical Rules:
+  - Workers are STATELESS (session in Redis, not memory)
+  - No worker-to-worker communication
+  - Failed jobs go back to queue for retry
+  - Log every step with tenantId + userId for tracing
+
+---
+
+LAYER 6: AI ORCHESTRATION LAYER
+--------------------------------
+PURPOSE: Control AI usage, costs, and quality.
+
+Components:
+
+  Cost Controller:
+    - Per-tenant token usage tracking (PostgreSQL)
+    - Redis counter: tokens_used:{tenantId}:{month}
+    - Hard limits per plan:
+      * Free tier: 10K tokens/month
+      * Pro tier: 100K tokens/month
+      * Enterprise: unlimited
+    - If limit exceeded: fallback to canned responses
+    - Alert tenant at 80% usage
+
+  Model Router:
+    - Strategy: cheap → expensive
+    - Tier 1: GPT-3.5-turbo (cheap, fast)
+      * Use for: simple questions, FAQs
+      * Token limit: 500 input + 150 output
+    - Tier 2: GPT-4-turbo (expensive, smart)
+      * Use for: complex requests, escalations
+      * Token limit: 2000 input + 500 output
+    - Tier 3: Claude Opus (most expensive, best reasoning)
+      * Use for: critical decisions, sentiment analysis
+    - Decision logic:
+      if (message.length < 100 && !requiresContext) → tier1
+      else if (conversationHistory.length < 5) → tier1
+      else → tier2
+
+  Prompt Builder:
+    - System prompt template:
+      ```
+      You are a helpful assistant for {businessName}.
+      Current lead: {leadName}, status: {leadStage}
+      Context: {lastNMessages}
+      Goal: {currentWorkflowGoal}
+      Constraints: {responseConstraints}
+      ```
+    - Inject:
+      * Tenant business info
+      * Lead data from CRM
+      * Conversation history (last 5 turns)
+      * Current workflow goal
+      * Response constraints (length, tone, etc.)
+
+  RAG Engine (optional):
+    - Vector DB: Pinecone or Qdrant
+    - Embed tenant knowledge base:
+      * FAQs
+      * Product docs
+      * Past successful responses
+    - On query:
+      1. Embed user message
+      2. Similarity search (top 3 docs)
+      3. Inject into prompt context
+    - Fallback: If no relevant docs, use LLM only
+
+  Guardrails:
+    - Content filter: OpenAI moderation API
+    - PII scrubber: Regex + NER model
+      * Remove: credit cards, SSN, API keys
+      * Mask: phone numbers (show last 4)
+    - Compliance check:
+      * No medical advice
+      * No financial advice
+      * No legal advice
+    - Fallback: If violation detected, send canned response
+
+  Response Post-Processor:
+    - Length check: Max 2000 chars (WhatsApp limit)
+    - Format: Markdown → platform-specific
+    - Link extraction: Shorten URLs if needed
+    - Emoji normalization
+
+AI Call Flow:
+  1. Check if user message passes guardrails
+  2. Check tenant token quota
+  3. Select model tier
+  4. Build prompt with context + RAG
+  5. Call LLM API
+  6. Log usage: tokens, cost, latency
+  7. Post-process response
+  8. Return to worker
+
+Error Handling:
+  - Rate limit (429): Exponential backoff, max 3 retries
+  - Timeout: 30s max, fallback to canned response
+  - Content violation: Log + fallback
+  - API error: Retry once, then fallback
+
+Monitoring:
+  - Metrics: tokens_per_request, cost_per_tenant, latency
+  - Alerts: cost spike, error rate >5%, latency >10s
+
+Critical Rules:
+  - NEVER call AI without checking quota
+  - ALWAYS log token usage for billing
+  - Fallback to canned responses on failure
+  - Never expose raw API errors to user
+
+---
+
+LAYER 7: CRM INTEGRATION LAYER
+-------------------------------
+PURPOSE: Persist lead data, conversation history, analytics.
+
+Data Models (PostgreSQL):
+
+  tenants:
+    - id (UUID, PK)
+    - name (string)
+    - plan ('free' | 'pro' | 'enterprise')
+    - status ('active' | 'suspended' | 'cancelled')
+    - createdAt, updatedAt
+
+  users:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - email, passwordHash
+    - role ('admin' | 'agent' | 'viewer')
+    - createdAt, updatedAt
+
+  leads:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - name (string, nullable)
+    - phone (string, nullable)
+    - email (string, nullable)
+    - status ('new' | 'contacted' | 'qualified' | 'converted' | 'lost')
+    - source (platform where first seen)
+    - assignedTo (UUID, FK to users, nullable)
+    - metadata (JSONB for custom fields)
+    - createdAt, updatedAt
+
+  conversations:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - leadId (UUID, FK)
+    - platform (string)
+    - platformUserId (string, indexed)
+    - platformConversationId (string)
+    - status ('active' | 'closed' | 'transferred')
+    - lastMessageAt (timestamp)
+    - createdAt
+
+  messages:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - conversationId (UUID, FK)
+    - direction ('inbound' | 'outbound')
+    - content (TEXT)
+    - attachments (JSONB)
+    - sentAt (timestamp)
+    - deliveredAt (timestamp, nullable)
+    - readAt (timestamp, nullable)
+    - metadata (JSONB, stores normalized + raw)
+
+  events:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - leadId (UUID, FK)
+    - type ('message_sent' | 'message_received' | 'status_changed' | 'workflow_started' | 'ai_called')
+    - data (JSONB)
+    - createdAt
+
+  workflows:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - name (string)
+    - trigger (JSONB)
+    - steps (JSONB)
+    - status ('active' | 'paused' | 'archived')
+    - createdAt, updatedAt
+
+  workflow_executions:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - workflowId (UUID, FK)
+    - leadId (UUID, FK)
+    - status ('in_progress' | 'completed' | 'failed')
+    - currentStep (integer)
+    - variables (JSONB)
+    - startedAt, completedAt
+
+Indexes:
+  - leads: (tenantId, status), (tenantId, createdAt)
+  - conversations: (tenantId, platformUserId), (leadId)
+  - messages: (conversationId, sentAt), (tenantId, sentAt)
+  - events: (tenantId, leadId, createdAt)
+
+Row-Level Security:
+  - Enable RLS on all tables
+  - Policy: WHERE tenantId = current_setting('app.tenantId')::uuid
+
+Lead Lifecycle:
+  1. First message from unknown user → Create lead (status: new)
+  2. Bot responds → status: contacted
+  3. Intent classifier detects interest → status: qualified
+  4. Workflow completes → status: converted or lost
+
+CRM Operations:
+
+  Lead Writer:
+    - Upsert lead on every inbound message
+    - Update lastMessageAt
+    - Merge metadata if new info detected (name, email from message)
+
+  Stage Tracker:
+    - State machine: new → contacted → qualified → converted/lost
+    - Triggered by:
+      * Workflow completion
+      * Manual agent update
+      * AI classification (e.g., "not interested" → lost)
+
+  Event Logger:
+    - Log every interaction as event
+    - Used for:
+      * Analytics (conversion funnel)
+      * Audit trail
+      * Debugging
+
+  Task Scheduler (via Workflow Engine):
+    - Create delayed jobs for follow-ups
+    - Example: If no reply in 24h → queue reminder message
+
+Queries (via Prisma):
+  - Get lead with conversations: prisma.lead.findUnique({
+      where: { id, tenantId },
+      include: { conversations: { include: { messages: true } } }
+    })
+  - Recent messages: prisma.message.findMany({
+      where: { conversationId, tenantId },
+      orderBy: { sentAt: 'desc' },
+      take: 10
+    })
+
+Critical Rules:
+  - ALWAYS filter by tenantId
+  - Use transactions for multi-table updates
+  - Store raw message in metadata for debugging
+  - Index on high-cardinality columns (userId, conversationId)
+
+---
+
+LAYER 8: RATE LIMIT ORCHESTRATOR
+---------------------------------
+PURPOSE: Prevent API bans, throttle outbound messages per platform.
+
+Per-Platform Limits:
+
+  WhatsApp (Evolution API):
+    - Official Meta limits apply if using Cloud API
+    - Evolution API (unofficial): ~1000 messages/day safe
+    - Strategy: 1 message/second burst, 500/day sustained
+
+  Telegram:
+    - 30 messages/second per bot
+    - 20 messages/minute to same user
+    - Strategy: Token bucket, 30 tokens/sec refill
+
+  Discord:
+    - 5 requests/second per bot
+    - 50 messages/minute per channel
+    - Strategy: Global + per-channel token buckets
+
+  Meta (Messenger + Instagram):
+    - Messenger: 300 messages/second per page
+    - Instagram: 200 messages/hour per account
+    - Constraint: 24-hour messaging window
+    - Strategy: Strict token bucket, 200/hour for Instagram
+
+  Teams:
+    - No official limit, but 1000/day is safe
+    - Strategy: Leaky bucket, 1/second
+
+  Twitch:
+    - Chat: 20 messages/30sec (verified bots: 100/30sec)
+    - EventSub: No limit on incoming
+    - Strategy: Token bucket, 20 tokens/30sec refill
+
+  Twitter:
+    - DMs: 500/day (free tier), 15000/day (paid)
+    - Tweets: 300/3hours
+    - Strategy: Daily quota tracking + rate limiter
+
+Implementation (Bottleneck.js):
+
+  const limiters = {
+    whatsapp: new Bottleneck({
+      reservoir: 500,           // 500 tokens
+      reservoirRefreshAmount: 500,
+      reservoirRefreshInterval: 24 * 60 * 60 * 1000, // daily
+      maxConcurrent: 1,
+      minTime: 1000             // 1/second
+    }),
+    telegram: new Bottleneck({
+      reservoir: 30,
+      reservoirRefreshAmount: 30,
+      reservoirRefreshInterval: 1000, // 30/sec
+      maxConcurrent: 5
+    }),
+    instagram: new Bottleneck({
+      reservoir: 200,
+      reservoirRefreshAmount: 200,
+      reservoirRefreshInterval: 60 * 60 * 1000, // 200/hour
+      maxConcurrent: 1,
+      minTime: 18000            // ~200/hour = 1 every 18s
+    })
+    // ... other platforms
+  }
+
+  async function sendWithRateLimit(platform, sendFn) {
+    return limiters[platform].schedule(() => sendFn())
+  }
+
+Redis Token Bucket (alternative):
+
+  Key: ratelimit:{platform}:{identifier}
+  Value: remaining_tokens
+  Commands:
+    - DECR: Take a token
+    - TTL + EXPIRE: Refill tokens on interval
+    - If tokens <= 0: Reject or queue
+
+Backpressure Handling:
+  - If rate limit hit → pause queue consumption
+  - Resume when tokens refill
+  - Don't retry immediately (causes thundering herd)
+
+Monitoring:
+  - Track: tokens_used, tokens_remaining, rate_limit_hits
+  - Alert: If hitting limit >10 times/hour
+
+Critical Rules:
+  - NEVER bypass rate limiter
+  - Per-tenant rate limits separate from platform limits
+  - Log all rate limit hits for capacity planning
+  - Graceful degradation (queue, don't drop)
+
+---
+
+LAYER 9: RESPONSE ROUTER
+-------------------------
+PURPOSE: Send final response back to user via correct platform.
+
+Flow:
+  1. Receive response from worker (unified format)
+  2. Denormalize to platform-specific payload (use Layer 3 renderer)
+  3. Apply rate limiter (Layer 8)
+  4. Call platform adapter (Layer 1)
+  5. Log delivery status
+  6. Update message record in DB
+
+Response Schema (unified):
+  {
+    tenantId: string
+    platform: string
+    userId: string
+    conversationId: string
+    message: {
+      text: string
+      attachments?: Array<{ type, url }>
+      buttons?: Array<{ label, payload }>
+      quickReplies?: Array<{ label, payload }>
+    }
+    metadata: {
+      replyTo?: string
+      notification?: boolean
+    }
+  }
+
+Platform Selector:
+  - Route to correct adapter based on response.platform
+  - Fallback: If adapter unavailable → queue for retry
+
+Format Converter (Outbound Renderer):
+  - Use Layer 3 normalizer's outbound renderer
+  - Platform-specific transformations:
+    * WhatsApp: buttons → list message or reply buttons
+    * Telegram: buttons → inline keyboard
+    * Discord: buttons → message components
+    * Meta: buttons → quick replies or template buttons
+    * Teams: buttons → Adaptive Card actions
+
+Send Executor:
+  - Wrap in rate limiter: sendWithRateLimit(platform, () => adapter.send())
+  - Retry on transient errors (network, 5xx)
+  - No retry on permanent errors (invalid recipient, blocked user)
+
+Delivery Tracker:
+  - Update messages table:
+    * deliveredAt: when API returns success
+    * failedAt: if permanent failure
+    * errorReason: if failed
+  - Platform-specific receipts:
+    * WhatsApp: Delivery + read receipts via webhook
+    * Telegram: No read receipts
+    * Discord: No delivery confirmation
+    * Meta: Delivery + read receipts via webhook
+
+Error Handling:
+  - 429 Rate Limit: Back off, retry after delay
+  - 4xx Client Error: Log, don't retry, alert
+  - 5xx Server Error: Retry up to 3 times
+  - Network Error: Retry with exponential backoff
+
+Monitoring:
+  - Metrics: messages_sent, send_latency, send_errors
+  - Alert: Error rate >5%, latency >5s
+
+Critical Rules:
+  - ALWAYS denormalize before sending
+  - Log every send attempt
+  - Handle platform-specific errors gracefully
+  - Update DB even on failure (for debugging)
+
+================================================================================
+4. SUPPORTING INFRASTRUCTURE
+================================================================================
+
+REDIS ARCHITECTURE
+------------------
+Purpose: In-memory data for speed-critical operations
+
+Databases (logical separation):
+  - DB 0: BullMQ queues
+  - DB 1: Session state
+  - DB 2: Rate limit counters
+  - DB 3: Idempotency cache
+  - DB 4: Application cache (tenant configs, etc.)
+
+Data Structures:
+
+  Session State:
+    Key: session:{tenantId}:{userId}
+    Type: Hash
+    Fields: conversationState, currentWorkflowId, currentStep, variables, lastMessageAt
+    TTL: 24 hours
+
+  Context Window:
+    Key: context:{tenantId}:{userId}
+    Type: List (LPUSH for new, LTRIM to keep last 10)
+    Value: JSON serialized messages
+    TTL: 24 hours
+
+  Idempotency:
+    Key: idempotency:{platform}:{messageId}
+    Type: String
+    Value: "processed"
+    TTL: 24 hours
+
+  Rate Limit:
+    Key: ratelimit:{platform}:{identifier}
+    Type: String (counter)
+    Value: remaining_tokens
+    TTL: Varies per platform (1s to 1 day)
+
+  Cache:
+    Key: cache:tenant:{tenantId}
+    Type: Hash
+    Fields: name, plan, aiModel, rateLimit, etc.
+    TTL: 5 minutes
+
+Persistence:
+  - RDB: Snapshot every 5 minutes
+  - AOF: Append-only file with fsync every second
+  - Backup: Daily snapshot to S3
+
+Scaling:
+  - Single instance: Up to 10K req/sec
+  - Redis Cluster: 100K+ req/sec, shard by key prefix
+
+Monitoring:
+  - Memory usage, eviction rate
+  - Command latency (SLOWLOG)
+  - Hit rate for cache keys
+
+---
+
+POSTGRESQL ARCHITECTURE
+------------------------
+Purpose: Durable storage for all business data
+
+Schema Design Principles:
+  - Multi-tenancy via tenantId column (UUID)
+  - Row-level security (RLS) enforced
+  - Soft deletes (deletedAt column, not actual DELETE)
+  - Audit columns: createdAt, updatedAt, createdBy, updatedBy
+
+Connection Pool:
+  - Prisma default: 10 connections per instance
+  - Production: 20-50 connections per worker pool
+  - Use PgBouncer for connection pooling at scale
+
+Indexes (Performance):
+  - Primary keys: Auto-indexed
+  - Foreign keys: Manually indexed
+  - tenantId: B-tree index on every table
+  - Composite: (tenantId, createdAt) for time-series queries
+  - Full-text: messages.content (GIN index for search)
+
+Partitioning (Future):
+  - Partition messages table by month (timestamp)
+  - Keeps queries fast as data grows to millions of rows
+
+Replication:
+  - Primary-replica setup (1 primary, 2 replicas)
+  - Read replicas for analytics queries
+  - Write to primary only
+
+Backup Strategy:
+  - Automated daily backups (pg_dump)
+  - WAL archiving for point-in-time recovery
+  - Retention: 30 days
+  - Test restore monthly
+
+Migrations:
+  - Prisma Migrate for schema changes
+  - Never modify production schema manually
+  - Test migrations on staging first
+
+Critical Rules:
+  - NEVER run migrations in production without testing
+  - Always use transactions for multi-table writes
+  - Monitor slow queries (log queries >100ms)
+  - Vacuum regularly to reclaim space
+
+---
+
+OBSERVABILITY STACK
+-------------------
+
+Structured Logging (Pino):
+  - Format: JSON (one log per line)
+  - Fields: timestamp, level, tenantId, userId, platform, requestId, msg, err
+  - Levels: trace, debug, info, warn, error, fatal
+  - Redaction: PII fields (phone, email) masked in logs
+  - Transport: stdout → CloudWatch Logs or Datadog
+
+Metrics (Prometheus):
+  - Counters: messages_received, messages_sent, errors_total
+  - Histograms: http_request_duration, queue_processing_time
+  - Gauges: queue_depth, active_connections
+  - Labels: tenantId, platform, status
+  - Scrape interval: 15 seconds
+
+Visualization (Grafana):
+  - Dashboards:
+    * System health: CPU, memory, request rate
+    * Queue depth per platform
+    * Message throughput (inbound/outbound)
+    * Error rate per tenant
+    * AI token usage and cost
+  - Alerts:
+    * Queue depth >10K
+    * Error rate >5%
+    * Response time >5s
+    * Disk usage >80%
+
+Distributed Tracing (OpenTelemetry):
+  - Trace: Entire message flow from webhook to response
+  - Spans: Gateway, normalizer, queue, worker, AI, CRM, sender
+  - Propagation: W3C Trace Context headers
+  - Sampling: 1% in production, 100% in staging
+  - Backend: Jaeger or Honeycomb
+
+Error Tracking (Sentry):
+  - Auto-capture unhandled exceptions
+  - Enrich with context: tenantId, userId, platform
+  - Source maps for stack traces
+  - Alerts: New errors, error spike
+
+Alerting (PagerDuty):
+  - Critical: DLQ depth >100, error rate >10%, API down
+  - Warning: Queue depth >5K, slow queries, high memory
+  - On-call rotation: 24/7 coverage
+
+Critical Rules:
+  - Log EVERY external API call (request + response)
+  - Never log sensitive data (passwords, API keys)
+  - Set up alerts before going to production
+  - Review dashboards weekly
+
+================================================================================
+5. DATA MODELS (DETAILED SCHEMAS)
+================================================================================
+
+See Layer 7 for full PostgreSQL schema.
+
+Additional tables:
+
+  api_keys:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - key (string, indexed, hashed)
+    - name (string, e.g., "Production Bot")
+    - permissions (JSONB, e.g., ["messages.read", "messages.write"])
+    - lastUsedAt (timestamp)
+    - expiresAt (timestamp, nullable)
+    - createdBy (UUID, FK to users)
+    - createdAt
+
+  billing:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - period (string, YYYY-MM format)
+    - messagesProcessed (integer)
+    - aiTokensUsed (integer)
+    - totalCost (decimal)
+    - paidAt (timestamp, nullable)
+    - createdAt
+
+  audit_logs:
+    - id (UUID, PK)
+    - tenantId (UUID, FK)
+    - userId (UUID, FK, nullable)
+    - action (string, e.g., "user.login", "lead.created")
+    - resourceType (string, e.g., "lead", "workflow")
+    - resourceId (UUID, nullable)
+    - metadata (JSONB)
+    - ipAddress (string)
+    - userAgent (string)
+    - createdAt
+
+Redis Schemas (serialized JSON):
+
+  Session:
+    {
+      conversationState: 'idle' | 'in_flow' | 'waiting_input'
+      currentWorkflowId: string | null
+      currentStep: number
+      variables: Record<string, any>
+      lastMessageAt: string (ISO8601)
+    }
+
+  Context Window (array of):
+    {
+      role: 'user' | 'assistant'
+      content: string
+      timestamp: string (ISO8601)
+    }
+
+================================================================================
+6. MESSAGE FLOW (END-TO-END)
+================================================================================
+
+INBOUND MESSAGE FLOW
+--------------------
+
+1. Platform sends webhook POST
+   - Example: WhatsApp user sends "Hello"
+   - Evolution API sends POST to /gateway/whatsapp
+
+2. Gateway receives, validates
+   - Verify HMAC signature
+   - Extract tenantId from API key in path/header
+   - Check idempotency (Redis: idempotency:whatsapp:{msgId})
+   - If duplicate: return 200 OK, skip processing
+   - If new: continue
+
+3. Normalize message
+   - Parse raw webhook payload
+   - Extract: userId, text, attachments, etc.
+   - Store in unified format
+   - Set idempotency key: SET idempotency:whatsapp:{msgId} "processed" EX 86400
+
+4. Queue message
+   - Push to BullMQ: whatsapp-messages queue
+   - Job payload: { tenantId, platform: 'whatsapp', normalizedMessage }
+   - Return 200 OK to platform (total time <3s)
+
+5. Worker picks up job
+   - BullMQ worker pulls from whatsapp-messages
+   - Load session: GET session:{tenantId}:{userId}
+   - Load context: LRANGE context:{tenantId}:{userId} 0 9
+
+6. Intent classification
+   - Check message text against regex patterns
+   - Example: "price" → intent:pricing, confidence: 0.9
+   - If confidence >0.8: skip AI
+
+7. Rule engine check
+   - Match intent:pricing → rule: send pricing message
+   - Rule handled: yes
+   - Response: "Our plans start at $99/month"
+
+8. Update CRM
+   - Upsert lead in PostgreSQL
+   - Log event: { type: 'message_received', leadId, data: { message } }
+   - Update conversation.lastMessageAt
+
+9. Update session
+   - SET session:{tenantId}:{userId} { ...session, lastMessageAt: now() }
+   - LPUSH context:{tenantId}:{userId} { role: 'user', content: 'price' }
+
+10. Queue response
+    - Push to response queue with normalized response
+    - Response router picks up
+
+11. Rate limit check
+    - Bottleneck checks whatsapp limiter
+    - Tokens available: proceed
+    - If no tokens: wait or queue
+
+12. Send via platform adapter
+    - Denormalize to WhatsApp format
+    - POST to Evolution API: /message/sendText/{instanceId}
+    - Store sent message in DB
+
+13. Update delivery status
+    - On success: UPDATE messages SET deliveredAt = now()
+    - Log metrics: messages_sent++
+
+OUTBOUND MESSAGE FLOW (SCHEDULED/WORKFLOW-TRIGGERED)
+-----------------------------------------------------
+
+1. Workflow engine triggers delayed job
+   - Example: "Send follow-up in 24 hours if no reply"
+   - BullMQ delayed job: scheduled-messages queue
+
+2. Job executes at scheduled time
+   - Worker picks up job
+   - Check conversation: has user replied?
+   - If yes: cancel
+   - If no: proceed
+
+3. Generate message
+   - Use workflow template: "Hi {name}, just following up..."
+   - Inject variables from lead data
+
+4. Continue from step 9 above (update session, queue response, send)
+
+================================================================================
+7. RATE LIMITING STRATEGY (DETAILED)
+================================================================================
+
+See Layer 8 for implementation details.
+
+Additional considerations:
+
+Per-Tenant Rate Limits:
+  - Free tier: 1000 messages/day total
+  - Pro tier: 10K messages/day total
+  - Enterprise: Unlimited
+
+  Implementation:
+    - Redis counter: ratelimit:tenant:{tenantId}:daily
+    - INCR on every message processed
+    - EXPIRE at midnight UTC
+    - If counter > limit: Reject with 429, inform tenant
+
+Burst vs Sustained:
+  - Allow short bursts (e.g., 10 messages in 1 second)
+  - But enforce daily/hourly caps for sustained load
+  - Use token bucket (burst) + quota tracking (sustained)
+
+Graceful Degradation:
+  - If platform rate limit hit: Queue message, retry later
+  - If tenant quota exceeded: Send email, upgrade prompt
+  - Never drop messages silently
+
+Monitoring:
+  - Track per-tenant usage in billing table
+  - Alert tenant at 80%, 90%, 100% of quota
+  - Auto-upgrade flow: Prompt to upgrade plan
+
+================================================================================
+8. MULTI-TENANCY DESIGN (DETAILED)
+================================================================================
+
+Data Isolation:
+  - Every table has tenantId column
+  - PostgreSQL RLS enforces filtering
+  - Application code sets session: SET app.tenantId = '{tenantId}'
+  - Prisma middleware injects tenantId into all queries
+
+Request Scoping:
+  - API key or JWT contains tenantId
+  - Middleware extracts and validates
+  - AsyncLocalStorage propagates context
+  - All downstream code reads tenantId from context
+
+Configuration Isolation:
+  - Redis: cache:tenant:{tenantId}
+  - Per-tenant settings: AI model, rate limits, workflows
+  - Never hard-code settings (must be tenant-configurable)
+
+Queue Isolation:
+  - Jobs tagged with tenantId
+  - Can implement per-tenant queues if needed
+  - Monitor queue depth per tenant
+
+Billing Isolation:
+  - Track usage (messages, tokens) per tenant
+  - Aggregate monthly in billing table
+  - Generate invoices via Stripe webhooks
+
+Testing Isolation:
+  - Use separate tenantId for tests
+  - Clean up test data after runs
+  - Never pollute production tenants
+
+Critical Rules:
+  - NEVER allow tenantId in user input
+  - ALWAYS derive from authenticated credentials
+  - Test with 2+ tenants in every feature
+  - Audit queries for missing tenantId filters
+
+================================================================================
+9. OBSERVABILITY & MONITORING (DETAILED)
+================================================================================
+
+See "Observability Stack" in Section 4.
+
+Additional practices:
+
+Log Correlation:
+  - Generate requestId on webhook entry
+  - Propagate through all layers
+  - Include in every log line
+  - Use for distributed tracing
+
+Structured Logging Best Practices:
+  - Use log levels correctly:
+    * trace: Very verbose (disabled in prod)
+    * debug: Detailed for debugging
+    * info: Normal operations
+    * warn: Potential issues
+    * error: Errors that were handled
+    * fatal: Unrecoverable errors
+  - Include context: tenantId, userId, platform, requestId
+  - Redact PII: phone, email, credit card
+
+Metrics to Track:
+  - Business:
+    * Messages per platform
+    * Conversion rate (lead → qualified → converted)
+    * AI usage and cost per tenant
+  - Technical:
+    * Queue depth and processing time
+    * API latency (p50, p95, p99)
+    * Error rate per endpoint
+    * Database query time
+
+Dashboards:
+  - Executive: Revenue, active tenants, message volume
+  - Operations: System health, queue depth, error rate
+  - Engineering: API latency, database performance, cache hit rate
+
+Alerts:
+  - Critical (wake up on-call):
+    * API down, database down
+    * Error rate >10%
+    * DLQ depth >500
+  - Warning (investigate during business hours):
+    * Queue depth >5K
+    * Slow queries >1s
+    * Memory usage >80%
+
+On-Call Runbooks:
+  - Document common issues and resolutions
+  - Example: "Queue depth high" → Check worker count, scale up
+  - Link to dashboards and logs
+
+================================================================================
+10. SECURITY & COMPLIANCE
+================================================================================
+
+Authentication:
+  - Users: JWT tokens (RS256)
+    * Payload: { userId, tenantId, role }
+    * Expiry: 1 hour
+    * Refresh: 7 days
+  - API keys: HMAC-SHA256 hashed
+    * Format: sk_{tenant}_{random32}
+    * Stored hashed in database
+    * Rate limited per key
+
+Authorization:
+  - Role-based access control (RBAC)
+    * Admin: Full access
+    * Agent: Read/write messages, read leads
+    * Viewer: Read-only
+  - Resource-level: Can only access own tenant's data
+
+Data Encryption:
+  - At rest: PostgreSQL encryption (AWS RDS default)
+  - In transit: TLS 1.3 for all HTTPS
+  - Secrets: AWS Secrets Manager or Vault
+
+PII Handling:
+  - Minimal collection (only phone/email if provided)
+  - Redacted from logs
+  - GDPR compliance:
+    * Right to access: Export user data
+    * Right to deletion: Hard delete on request
+    * Data retention: 2 years, then auto-delete
+
+Compliance:
+  - GDPR: Data processing agreement, DPA
+  - CCPA: Privacy policy, opt-out mechanism
+  - SOC 2: Audit trail in audit_logs table
+
+Security Headers:
+  - X-Content-Type-Options: nosniff
+  - X-Frame-Options: DENY
+  - Content-Security-Policy: default-src 'self'
+  - Strict-Transport-Security: max-age=31536000
+
+Input Validation:
+  - All user input sanitized
+  - SQL injection: Prevented by Prisma (parameterized queries)
+  - XSS: Sanitize before rendering in UI
+
+Rate Limiting (Security):
+  - API endpoints: 100 req/min per IP
+  - Login: 5 attempts per 15 min per IP
+  - Webhook: 100 req/sec per tenant
+
+Vulnerability Scanning:
+  - npm audit: Run on every build
+  - Dependabot: Auto-update dependencies
+  - Snyk: Monitor for CVEs
+
+Incident Response:
+  - Security contact: security@company.com
+  - Response time: 24 hours for critical
+  - Disclosure policy: 90 days responsible disclosure
+
+================================================================================
+11. DEPLOYMENT ARCHITECTURE
+================================================================================
+
+Development:
+  - Docker Compose: All services local
+  - .env.local: Local environment variables
+  - Hot reload: nodemon for API, tsx for workers
+
+Staging:
+  - Kubernetes cluster (minikube or GKE)
+  - Separate namespace: staging
+  - Deploy on every PR merge
+  - Synthetic testing: Automated smoke tests
+
+Production:
+  - Kubernetes cluster (EKS, GKE, or AKS)
+  - Namespaces: production, monitoring
+  - Multi-zone deployment: 3 availability zones
+  - Auto-scaling: HPA based on CPU + queue depth
+
+Kubernetes Resources:
+
+  API Deployment:
+    - Replicas: 3 (min), 10 (max)
+    - Resources: 500m CPU, 512Mi RAM per pod
+    - Liveness probe: GET /health
+    - Readiness probe: GET /ready
+
+  Worker Deployment:
+    - Replicas: 5 (min), 50 (max)
+    - Resources: 1 CPU, 1Gi RAM per pod
+    - Autoscaling: Based on queue depth
+      * Target: 100 jobs/worker
+      * Scale up if queue >500
+      * Scale down if queue <50
+
+  Evolution API (WhatsApp):
+    - StatefulSet: 1 replica (persistent session)
+    - Volume: 10Gi for session data
+    - Service: ClusterIP, port 8080
+
+  Telegram Bot API:
+    - StatefulSet: 1 replica
+    - Volume: 5Gi for session data
+    - Service: ClusterIP, port 8081
+
+  PostgreSQL:
+    - Managed service (AWS RDS, GCP Cloud SQL)
+    - Multi-AZ deployment
+    - Automated backups
+
+  Redis:
+    - Managed service (ElastiCache, Memorystore)
+    - Cluster mode: 3 shards
+    - Replication: 1 replica per shard
+
+Secrets Management:
+  - Kubernetes Secrets for credentials
+  - Sealed Secrets for Git storage
+  - External Secrets Operator for AWS Secrets Manager
+
+Networking:
+  - Ingress: nginx-ingress-controller
+  - TLS: Let's Encrypt (cert-manager)
+  - DNS: Route 53 or CloudFlare
+  - Load balancer: AWS ALB or GCP LB
+
+CI/CD Pipeline (GitHub Actions):
+
+  On PR:
+    1. Lint (ESLint, Prettier)
+    2. Type check (TypeScript)
+    3. Unit tests (Jest)
+    4. Build Docker images
+    5. Deploy to staging
+    6. Run integration tests
+    7. Comment results on PR
+
+  On merge to main:
+    1. Build production images
+    2. Push to registry (ECR, GCR, Docker Hub)
+    3. Deploy to production (rolling update)
+    4. Run smoke tests
+    5. Notify Slack on success/failure
+
+Rollback Strategy:
+  - Keep last 5 Docker image tags
+  - Instant rollback: kubectl rollout undo
+  - Database migrations: Reversible (down migration)
+
+Blue-Green Deployment (Future):
+  - Two production environments: blue, green
+  - Route traffic to one while updating other
+  - Zero-downtime deployments
+
+================================================================================
+12. SCALING STRATEGY
+================================================================================
+
+Vertical Scaling:
+  - API pods: 500m → 2 CPU
+  - Worker pods: 1 CPU → 4 CPU
+  - Database: db.t3.medium → db.r5.xlarge
+
+Horizontal Scaling:
+  - API pods: 3 → 50 replicas (HPA)
+  - Worker pods: 5 → 100 replicas (HPA on queue depth)
+  - Redis: Single → Cluster (3-9 nodes)
+
+Database Scaling:
+  - Read replicas: 1 → 3
+  - Connection pooling: PgBouncer (500 connections)
+  - Partitioning: messages table by month
+  - Archival: Move old data (>1 year) to S3
+
+Queue Scaling:
+  - Redis Cluster: Shard by key prefix
+  - Multiple worker pools: One per platform
+  - Priority queues: VIP users separate queue
+
+Caching Strategy:
+  - L1: Application cache (in-memory, per pod)
+  - L2: Redis cache (shared)
+  - L3: CDN for static assets
+
+Cost Optimization:
+  - Spot instances for workers (up to 70% savings)
+  - Reserved instances for database (up to 40% savings)
+  - Auto-scale down during low traffic (nights, weekends)
+
+Performance Targets:
+  - API latency: p95 <200ms
+  - Message processing: <5s end-to-end
+  - Queue depth: <1000 jobs per worker
+  - Database queries: <100ms p95
+
+Capacity Planning:
+  - 1 worker: ~100-200 messages/minute
+  - 10 workers: ~1000-2000 messages/minute
+  - 100 workers: ~10K-20K messages/minute
+
+Bottleneck Analysis:
+  - If queue growing: Scale workers
+  - If DB slow: Add read replicas or optimize queries
+  - If Redis slow: Scale to cluster
+  - If API slow: Scale API pods or add caching
+
+Global Expansion (Future):
+  - Deploy in multiple regions (US-East, EU, APAC)
+  - Geo-routing: Route users to nearest region
+  - Data residency: GDPR compliance (EU data in EU)
+
+================================================================================
+END OF ARCHITECTURE DOCUMENT
+================================================================================

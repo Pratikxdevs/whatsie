@@ -1,0 +1,154 @@
+135 ================================================================================
+136 3. LAYER-BY-LAYER ARCHITECTURE
+137 ================================================================================
+138
+139 LAYER 0: MULTI-TENANCY & ISOLATION
+140 -----------------------------------
+141 PURPOSE: Ensure every request is scoped to a tenant. Prevents data leaks.
+142
+143 Components:
+144 - Tenant Router
+145 * Extracts tenantId from API key or JWT
+146 * Injects into request context
+147 * Validates tenant exists and is active
+148
+149 - Tenant Context Middleware
+150 * Sets AsyncLocalStorage context
+151 * All downstream code reads tenantId from context
+152 * Database queries auto-filter by tenantId
+153
+154 - Tenant Config Store (Redis)
+155 * Per-tenant settings: AI model, rate limits, workflows
+156 * Cache with 5min TTL, fallback to PostgreSQL
+157
+158 - Row-Level Security (PostgreSQL)
+159 * Every table has tenantId column
+160 * RLS policies enforce filtering
+161 * Example: CREATE POLICY tenant_isolation ON messages
+162 USING (tenantId = current_setting('app.tenantId')::uuid)
+163
+164 Critical Rules:
+165 - NEVER allow tenantId to be set by user input
+166 - ALWAYS derive tenantId from authenticated credentials
+167 - Database queries MUST include WHERE tenantId = $1
+168 - Test with 2+ tenants to verify isolation
+169
+170 ---
+171
+172 LAYER 1: PLATFORM API ADAPTERS
+173 -------------------------------
+174 PURPOSE: Abstract platform-specific APIs behind unified interface.
+175
+176 Components per Platform:
+177
+178 WhatsApp Adapter:
+179 - Evolution API Docker container on localhost:8080
+180 - Send: POST /message/sendText/{instanceId}
+181 - Receive: Webhook at /gateway/whatsapp
+182 - Health check: GET /instance/connectionState/{instanceId}
+183
+184 Telegram Adapter:
+185 - tdlib/telegram-bot-api Docker on localhost:8081
+186 - Send: POST /bot{token}/sendMessage
+187 - Receive: Webhook at /gateway/telegram
+188 - Long polling fallback if webhook fails
+189
+190 Discord Adapter:
+191 - discord.js Client with WebSocket gateway
+192 - Send: channel.send() or user.send()
+193 - Receive: Events via 'messageCreate' listener
+194 - Reconnection logic with exponential backoff
+195
+196 Meta Adapter (FB + Instagram):
+197 - Direct HTTPS to graph.facebook.com/v25.0
+198 - Send: POST /{pageId}/messages
+199 - Receive: Webhook at /gateway/meta (handles both)
+200 - Token: Page Access Token (never-expiring)
+201 - Constraint: 24-hour messaging window
+202
+203 Teams Adapter:
+204 - BotFrameworkAdapter from botbuilder
+205 - Send: context.sendActivity()
+206 - Receive: Bot handles POST /api/messages
+207 - Direct Line for WebSocket fallback
+208
+209 Twitch Adapter:
+210 - @twurple/api, @twurple/eventsub-ws, @twurple/chat
+211 - Send: chatClient.say()
+212 - Receive: EventSub WebSocket + Chat IRC
+213 - Separate connections for events vs chat
+214
+215 Twitter Adapter:
+216 - twitter-api-v2 with OAuth 2.0
+217 - Send: client.v2.tweet() or client.v2.sendDM()
+218 - Receive: Webhook (paid tier) or polling
+219 - Rate limit: Strict, see Layer 8
+220
+221 Interface Contract:
+222 All adapters implement:
+223 - sendMessage(recipient, content, options)
+224 - parseIncomingWebhook(req.body) → NormalizedMessage
+225 - verifySignature(req) → boolean
+226 - healthCheck() → { status, latency }
+227
+228 Critical Rules:
+229 - Adapters are STATELESS
+230 - No business logic inside adapters
+231 - Errors bubble up to gateway layer
+232 - Retry logic handled by queue, not adapter
+233
+234 ---
+235
+236 LAYER 2: WEBHOOK GATEWAY
+237 -------------------------
+238 PURPOSE: Single secure entry point for all platform webhooks.
+239
+240 Components:
+241
+242 Signature Validator:
+243 - WhatsApp: HMAC-SHA256 with Evolution API secret
+244 - Telegram: SHA256 hash of bot token
+245 - Discord: Ed25519 signature verification
+246 - Meta: SHA256 HMAC with app secret
+247 - Teams: JWT validation with bot credentials
+248 - Twitch: HMAC-SHA256 with secret
+249 - Twitter: HMAC-SHA256 with consumer secret
+250
+251 Tenant Authentication:
+252 - Extract API key from X-API-Key header or webhook path
+253 - Lookup tenantId from api_keys table
+254 - Reject if tenant is suspended or over quota
+255 - Rate limit per tenant: 100 webhooks/second
+256
+257 Idempotency Layer (Redis):
+258 - Key pattern: idempotency:{platform}:{messageId}
+259 - Value: "processed"
+260 - TTL: 24 hours
+261 - Check: IF EXISTS, return 200 immediately
+262 - Set: After normalization, before queueing
+263
+264 Request Logger:
+265 - Log every webhook with:
+266 * Timestamp, tenantId, platform, messageId
+267 * Processing time, status code
+268 * Error details if failed
+269 - Forward to observability stack
+270
+271 Endpoints:
+272 POST /gateway/whatsapp → WhatsApp Evolution API webhook
+273 POST /gateway/telegram → Telegram Bot API webhook
+274 POST /gateway/discord → Discord interactions endpoint
+275 POST /gateway/meta → Meta (FB + Instagram) webhook
+276 POST /api/messages → MS Teams Bot Framework webhook
+277 POST /gateway/twitch → Twitch EventSub webhook
+278 POST /gateway/twitter → Twitter Account Activity webhook
+279
+280 GET /gateway/:platform → Verification endpoint (Meta, Telegram)
+281
+282 Critical Rules:
+283 - ALWAYS verify signature before processing
+284 - Return 200 OK within 3 seconds (queue async processing)
+285 - Never trust message content for tenant identification
+286 - Log failed signature validations (possible attack)
+287
+288 ---

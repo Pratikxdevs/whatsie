@@ -1,0 +1,226 @@
+978 ================================================================================
+979 4. SUPPORTING INFRASTRUCTURE
+980 ================================================================================
+981
+982 REDIS ARCHITECTURE
+983 ------------------
+984 Purpose: In-memory data for speed-critical operations
+985
+986 Databases (logical separation):
+987 - DB 0: BullMQ queues
+988 - DB 1: Session state
+989 - DB 2: Rate limit counters
+990 - DB 3: Idempotency cache
+991 - DB 4: Application cache (tenant configs, etc.)
+992
+993 Data Structures:
+994
+995 Session State:
+996 Key: session:{tenantId}:{userId}
+997 Type: Hash
+998 Fields: conversationState, currentWorkflowId, currentStep, variables, lastMessageAt
+999 TTL: 24 hours
+1000
+1001 Context Window:
+1002 Key: context:{tenantId}:{userId}
+1003 Type: List (LPUSH for new, LTRIM to keep last 10)
+1004 Value: JSON serialized messages
+1005 TTL: 24 hours
+1006
+1007 Idempotency:
+1008 Key: idempotency:{platform}:{messageId}
+1009 Type: String
+1010 Value: "processed"
+1011 TTL: 24 hours
+1012
+1013 Rate Limit:
+1014 Key: ratelimit:{platform}:{identifier}
+1015 Type: String (counter)
+1016 Value: remaining_tokens
+1017 TTL: Varies per platform (1s to 1 day)
+1018
+1019 Cache:
+1020 Key: cache:tenant:{tenantId}
+1021 Type: Hash
+1022 Fields: name, plan, aiModel, rateLimit, etc.
+1023 TTL: 5 minutes
+1024
+1025 Persistence:
+1026 - RDB: Snapshot every 5 minutes
+1027 - AOF: Append-only file with fsync every second
+1028 - Backup: Daily snapshot to S3
+1029
+1030 Scaling:
+1031 - Single instance: Up to 10K req/sec
+1032 - Redis Cluster: 100K+ req/sec, shard by key prefix
+1033
+1034 Monitoring:
+1035 - Memory usage, eviction rate
+1036 - Command latency (SLOWLOG)
+1037 - Hit rate for cache keys
+1038
+1039 ---
+1040
+1041 POSTGRESQL ARCHITECTURE
+1042 ------------------------
+1043 Purpose: Durable storage for all business data
+1044
+1045 Schema Design Principles:
+1046 - Multi-tenancy via tenantId column (UUID)
+1047 - Row-level security (RLS) enforced
+1048 - Soft deletes (deletedAt column, not actual DELETE)
+1049 - Audit columns: createdAt, updatedAt, createdBy, updatedBy
+1050
+1051 Connection Pool:
+1052 - Prisma default: 10 connections per instance
+1053 - Production: 20-50 connections per worker pool
+1054 - Use PgBouncer for connection pooling at scale
+1055
+1056 Indexes (Performance):
+1057 - Primary keys: Auto-indexed
+1058 - Foreign keys: Manually indexed
+1059 - tenantId: B-tree index on every table
+1060 - Composite: (tenantId, createdAt) for time-series queries
+1061 - Full-text: messages.content (GIN index for search)
+1062
+1063 Partitioning (Future):
+1064 - Partition messages table by month (timestamp)
+1065 - Keeps queries fast as data grows to millions of rows
+1066
+1067 Replication:
+1068 - Primary-replica setup (1 primary, 2 replicas)
+1069 - Read replicas for analytics queries
+1070 - Write to primary only
+1071
+1072 Backup Strategy:
+1073 - Automated daily backups (pg_dump)
+1074 - WAL archiving for point-in-time recovery
+1075 - Retention: 30 days
+1076 - Test restore monthly
+1077
+1078 Migrations:
+1079 - Prisma Migrate for schema changes
+1080 - Never modify production schema manually
+1081 - Test migrations on staging first
+1082
+1083 Critical Rules:
+1084 - NEVER run migrations in production without testing
+1085 - Always use transactions for multi-table writes
+1086 - Monitor slow queries (log queries >100ms)
+1087 - Vacuum regularly to reclaim space
+1088
+1089 ---
+1090
+1091 OBSERVABILITY STACK
+1092 -------------------
+1093
+1094 Structured Logging (Pino):
+1095 - Format: JSON (one log per line)
+1096 - Fields: timestamp, level, tenantId, userId, platform, requestId, msg, err
+1097 - Levels: trace, debug, info, warn, error, fatal
+1098 - Redaction: PII fields (phone, email) masked in logs
+1099 - Transport: stdout → CloudWatch Logs or Datadog
+1100
+1101 Metrics (Prometheus):
+1102 - Counters: messages_received, messages_sent, errors_total
+1103 - Histograms: http_request_duration, queue_processing_time
+1104 - Gauges: queue_depth, active_connections
+1105 - Labels: tenantId, platform, status
+1106 - Scrape interval: 15 seconds
+1107
+1108 Visualization (Grafana):
+1109 - Dashboards:
+1110 * System health: CPU, memory, request rate
+1111 * Queue depth per platform
+1112 * Message throughput (inbound/outbound)
+1113 * Error rate per tenant
+1114 * AI token usage and cost
+1115 - Alerts:
+1116 * Queue depth >10K
+1117 * Error rate >5%
+1118 * Response time >5s
+1119 * Disk usage >80%
+1120
+1121 Distributed Tracing (OpenTelemetry):
+1122 - Trace: Entire message flow from webhook to response
+1123 - Spans: Gateway, normalizer, queue, worker, AI, CRM, sender
+1124 - Propagation: W3C Trace Context headers
+1125 - Sampling: 1% in production, 100% in staging
+1126 - Backend: Jaeger or Honeycomb
+1127
+1128 Error Tracking (Sentry):
+1129 - Auto-capture unhandled exceptions
+1130 - Enrich with context: tenantId, userId, platform
+1131 - Source maps for stack traces
+1132 - Alerts: New errors, error spike
+1133
+1134 Alerting (PagerDuty):
+1135 - Critical: DLQ depth >100, error rate >10%, API down
+1136 - Warning: Queue depth >5K, slow queries, high memory
+1137 - On-call rotation: 24/7 coverage
+1138
+1139 Critical Rules:
+1140 - Log EVERY external API call (request + response)
+1141 - Never log sensitive data (passwords, API keys)
+1142 - Set up alerts before going to production
+1143 - Review dashboards weekly
+1144
+1145 ================================================================================
+1146 5. DATA MODELS (DETAILED SCHEMAS)
+1147 ================================================================================
+1148
+1149 See Layer 7 for full PostgreSQL schema.
+1150
+1151 Additional tables:
+1152
+1153 api_keys:
+1154 - id (UUID, PK)
+1155 - tenantId (UUID, FK)
+1156 - key (string, indexed, hashed)
+1157 - name (string, e.g., "Production Bot")
+1158 - permissions (JSONB, e.g., ["messages.read", "messages.write"])
+1159 - lastUsedAt (timestamp)
+1160 - expiresAt (timestamp, nullable)
+1161 - createdBy (UUID, FK to users)
+1162 - createdAt
+1163
+1164 billing:
+1165 - id (UUID, PK)
+1166 - tenantId (UUID, FK)
+1167 - period (string, YYYY-MM format)
+1168 - messagesProcessed (integer)
+1169 - aiTokensUsed (integer)
+1170 - totalCost (decimal)
+1171 - paidAt (timestamp, nullable)
+1172 - createdAt
+1173
+1174 audit_logs:
+1175 - id (UUID, PK)
+1176 - tenantId (UUID, FK)
+1177 - userId (UUID, FK, nullable)
+1178 - action (string, e.g., "user.login", "lead.created")
+1179 - resourceType (string, e.g., "lead", "workflow")
+1180 - resourceId (UUID, nullable)
+1181 - metadata (JSONB)
+1182 - ipAddress (string)
+1183 - userAgent (string)
+1184 - createdAt
+1185
+1186 Redis Schemas (serialized JSON):
+1187
+1188 Session:
+1189 {
+1190 conversationState: 'idle' | 'in_flow' | 'waiting_input'
+1191 currentWorkflowId: string | null
+1192 currentStep: number
+1193 variables: Record<string, any>
+1194 lastMessageAt: string (ISO8601)
+1195 }
+1196
+1197 Context Window (array of):
+1198 {
+1199 role: 'user' | 'assistant'
+1200 content: string
+1201 timestamp: string (ISO8601)
+1202 }
+1203

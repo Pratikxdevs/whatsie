@@ -1,0 +1,166 @@
+1204 ================================================================================
+1205 6. MESSAGE FLOW (END-TO-END)
+1206 ================================================================================
+1207
+1208 INBOUND MESSAGE FLOW
+1209 --------------------
+1210
+1211 1. Platform sends webhook POST
+1212 - Example: WhatsApp user sends "Hello"
+1213 - Evolution API sends POST to /gateway/whatsapp
+1214
+1215 2. Gateway receives, validates
+1216 - Verify HMAC signature
+1217 - Extract tenantId from API key in path/header
+1218 - Check idempotency (Redis: idempotency:whatsapp:{msgId})
+1219 - If duplicate: return 200 OK, skip processing
+1220 - If new: continue
+1221
+1222 3. Normalize message
+1223 - Parse raw webhook payload
+1224 - Extract: userId, text, attachments, etc.
+1225 - Store in unified format
+1226 - Set idempotency key: SET idempotency:whatsapp:{msgId} "processed" EX 86400
+1227
+1228 4. Queue message
+1229 - Push to BullMQ: whatsapp-messages queue
+1230 - Job payload: { tenantId, platform: 'whatsapp', normalizedMessage }
+1231 - Return 200 OK to platform (total time <3s)
+1232
+1233 5. Worker picks up job
+1234 - BullMQ worker pulls from whatsapp-messages
+1235 - Load session: GET session:{tenantId}:{userId}
+1236 - Load context: LRANGE context:{tenantId}:{userId} 0 9
+1237
+1238 6. Intent classification
+1239 - Check message text against regex patterns
+1240 - Example: "price" → intent:pricing, confidence: 0.9
+1241 - If confidence >0.8: skip AI
+1242
+1243 7. Rule engine check
+1244 - Match intent:pricing → rule: send pricing message
+1245 - Rule handled: yes
+1246 - Response: "Our plans start at $99/month"
+1247
+1248 8. Update CRM
+1249 - Upsert lead in PostgreSQL
+1250 - Log event: { type: 'message_received', leadId, data: { message } }
+1251 - Update conversation.lastMessageAt
+1252
+1253 9. Update session
+1254 - SET session:{tenantId}:{userId} { ...session, lastMessageAt: now() }
+1255 - LPUSH context:{tenantId}:{userId} { role: 'user', content: 'price' }
+1256
+1257 10. Queue response
+1258 - Push to response queue with normalized response
+1259 - Response router picks up
+1260
+1261 11. Rate limit check
+1262 - Bottleneck checks whatsapp limiter
+1263 - Tokens available: proceed
+1264 - If no tokens: wait or queue
+1265
+1266 12. Send via platform adapter
+1267 - Denormalize to WhatsApp format
+1268 - POST to Evolution API: /message/sendText/{instanceId}
+1269 - Store sent message in DB
+1270
+1271 13. Update delivery status
+1272 - On success: UPDATE messages SET deliveredAt = now()
+1273 - Log metrics: messages_sent++
+1274
+1275 OUTBOUND MESSAGE FLOW (SCHEDULED/WORKFLOW-TRIGGERED)
+1276 -----------------------------------------------------
+1277
+1278 1. Workflow engine triggers delayed job
+1279 - Example: "Send follow-up in 24 hours if no reply"
+1280 - BullMQ delayed job: scheduled-messages queue
+1281
+1282 2. Job executes at scheduled time
+1283 - Worker picks up job
+1284 - Check conversation: has user replied?
+1285 - If yes: cancel
+1286 - If no: proceed
+1287
+1288 3. Generate message
+1289 - Use workflow template: "Hi {name}, just following up..."
+1290 - Inject variables from lead data
+1291
+1292 4. Continue from step 9 above (update session, queue response, send)
+1293
+1294 ================================================================================
+1295 7. RATE LIMITING STRATEGY (DETAILED)
+1296 ================================================================================
+1297
+1298 See Layer 8 for implementation details.
+1299
+1300 Additional considerations:
+1301
+1302 Per-Tenant Rate Limits:
+1303 - Free tier: 1000 messages/day total
+1304 - Pro tier: 10K messages/day total
+1305 - Enterprise: Unlimited
+1306
+1307 Implementation:
+1308 - Redis counter: ratelimit:tenant:{tenantId}:daily
+1309 - INCR on every message processed
+1310 - EXPIRE at midnight UTC
+1311 - If counter > limit: Reject with 429, inform tenant
+1312
+1313 Burst vs Sustained:
+1314 - Allow short bursts (e.g., 10 messages in 1 second)
+1315 - But enforce daily/hourly caps for sustained load
+1316 - Use token bucket (burst) + quota tracking (sustained)
+1317
+1318 Graceful Degradation:
+1319 - If platform rate limit hit: Queue message, retry later
+1320 - If tenant quota exceeded: Send email, upgrade prompt
+1321 - Never drop messages silently
+1322
+1323 Monitoring:
+1324 - Track per-tenant usage in billing table
+1325 - Alert tenant at 80%, 90%, 100% of quota
+1326 - Auto-upgrade flow: Prompt to upgrade plan
+1327
+1328 ================================================================================
+1329 8. MULTI-TENANCY DESIGN (DETAILED)
+1330 ================================================================================
+1331
+1332 Data Isolation:
+1333 - Every table has tenantId column
+1334 - PostgreSQL RLS enforces filtering
+1335 - Application code sets session: SET app.tenantId = '{tenantId}'
+1336 - Prisma middleware injects tenantId into all queries
+1337
+1338 Request Scoping:
+1339 - API key or JWT contains tenantId
+1340 - Middleware extracts and validates
+1341 - AsyncLocalStorage propagates context
+1342 - All downstream code reads tenantId from context
+1343
+1344 Configuration Isolation:
+1345 - Redis: cache:tenant:{tenantId}
+1346 - Per-tenant settings: AI model, rate limits, workflows
+1347 - Never hard-code settings (must be tenant-configurable)
+1348
+1349 Queue Isolation:
+1350 - Jobs tagged with tenantId
+1351 - Can implement per-tenant queues if needed
+1352 - Monitor queue depth per tenant
+1353
+1354 Billing Isolation:
+1355 - Track usage (messages, tokens) per tenant
+1356 - Aggregate monthly in billing table
+1357 - Generate invoices via Stripe webhooks
+1358
+1359 Testing Isolation:
+1360 - Use separate tenantId for tests
+1361 - Clean up test data after runs
+1362 - Never pollute production tenants
+1363
+1364 Critical Rules:
+1365 - NEVER allow tenantId in user input
+1366 - ALWAYS derive from authenticated credentials
+1367 - Test with 2+ tenants in every feature
+1368 - Audit queries for missing tenantId filters
+1369

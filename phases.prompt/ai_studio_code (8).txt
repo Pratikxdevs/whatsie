@@ -1,0 +1,134 @@
+1 ================================================================================
+2 PRODUCTION-READY MULTI-PLATFORM BOT ARCHITECTURE
+3 Complete System Design Document
+4 ================================================================================
+5
+6 TABLE OF CONTENTS
+7 -----------------
+8 1. System Overview
+9 2. Technology Stack
+10 3. Layer-by-Layer Architecture (0-9)
+11 4. Supporting Infrastructure
+12 5. Data Models
+13 6. Message Flow
+14 7. Rate Limiting Strategy
+15 8. Multi-Tenancy Design
+16 9. Observability & Monitoring
+17 10. Security & Compliance
+18 11. Deployment Architecture
+19 12. Scaling Strategy
+20
+21 ================================================================================
+22 1. SYSTEM OVERVIEW
+23 ================================================================================
+24
+25 PURPOSE
+26 -------
+27 Multi-tenant SaaS platform enabling businesses to deploy AI-powered bots across
+28 8 messaging platforms (WhatsApp, Telegram, Discord, FB Messenger, Instagram,
+29 MS Teams, Twitch, Twitter/X).
+30
+31 CORE CAPABILITIES
+32 -----------------
+33 - Unified message handling across all platforms
+34 - AI-powered conversation with cost controls
+35 - CRM integration for lead management
+36 - Workflow automation engine
+37 - Real-time dashboard and analytics
+38 - Per-tenant customization and billing
+39
+40 KEY DESIGN PRINCIPLES
+41 ---------------------
+42 1. Platform-agnostic core (never couple to specific APIs)
+43 2. Multi-tenancy from Layer 0 (tenant isolation is foundational)
+44 3. Queue-driven architecture (survive spikes and API failures)
+45 4. AI as a tool, not the brain (rules/workflows before LLM calls)
+46 5. Bidirectional normalization (parse inbound, render outbound)
+47
+48 ================================================================================
+49 2. TECHNOLOGY STACK
+50 ================================================================================
+51
+52 RUNTIME & LANGUAGE
+53 ------------------
+54 - Node.js 20+ LTS
+55 - TypeScript 5.3+
+56 - ES Modules (not CommonJS)
+57
+58 CORE FRAMEWORKS
+59 ---------------
+60 - Express.js (API server)
+61 - BullMQ 5.x (job queue)
+62 - Prisma 5.x (ORM)
+63 - Socket.IO (real-time layer)
+64
+65 DATABASES
+66 ---------
+67 - PostgreSQL 15+ (persistent storage)
+68 - Row-level security (RLS) for multi-tenancy
+69 - Full-text search for message history
+70 - Redis 7+ (in-memory)
+71 - BullMQ backing store
+72 - Session state
+73 - Rate limit counters
+74 - Idempotency cache
+75
+76 PLATFORM APIS
+77 -------------
+78 WhatsApp:
+79 - Evolution API (self-hosted Docker)
+80 - Repo: github.com/EvolutionAPI/evolution-api
+81 - Why: REST + WebSocket + Webhook out of box
+82
+83 Telegram:
+84 - tdlib/telegram-bot-api (self-hosted Docker)
+85 - Repo: github.com/tdlib/telegram-bot-api
+86 - Why: Official local server, no file size limits
+87
+88 Discord:
+89 - discord.js SDK
+90 - Repo: github.com/discordjs/discord.js
+91 - Why: Most mature Node.js wrapper
+92
+93 Facebook Messenger + Instagram:
+94 - Meta Graph API (official, no wrapper needed)
+95 - Docs: developers.facebook.com/docs/graph-api
+96 - Why: One API for both platforms
+97
+98 Microsoft Teams:
+99 - botbuilder-js SDK
+100 - Repo: github.com/microsoft/botbuilder-js
+101 - Why: Official Microsoft SDK
+102
+103 Twitch:
+104 - twurple SDK
+105 - Repo: github.com/twurple/twurple
+106 - Why: Full EventSub + Chat support
+107
+108 Twitter/X:
+109 - twitter-api-v2
+110 - Repo: github.com/PLhery/node-twitter-api-v2
+111 - Why: Best TypeScript support, streaming included
+112
+113 AI/ML
+114 -----
+115 - OpenAI SDK (GPT-4, GPT-3.5-turbo)
+116 - Anthropic SDK (Claude) - optional
+117 - Pinecone or Qdrant (vector DB for RAG)
+118 - Bottleneck.js (rate limiting orchestrator)
+119
+120 OBSERVABILITY
+121 -------------
+122 - Pino (structured JSON logging)
+123 - Prometheus (metrics collection)
+124 - Grafana (metrics visualization)
+125 - OpenTelemetry (distributed tracing)
+126 - Sentry (error tracking)
+127
+128 DEPLOYMENT
+129 ----------
+130 - Docker + Docker Compose (local dev)
+131 - Kubernetes (production)
+132 - AWS/GCP/Azure (cloud provider)
+133 - GitHub Actions (CI/CD)
+134

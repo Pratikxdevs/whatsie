@@ -1,0 +1,20 @@
+{
+  "project": "CrmV2",
+  "created": "2026-05-19",
+  "workflow": {
+    "autoCommit": true,
+    "autoVerify": true,
+    "parallelExecution": true,
+    "mvpMode": false
+  },
+  "phases": {
+    "total": 4,
+    "current": 1
+  },
+  "codebase": {
+    "type": "brownfield",
+    "languages": ["typescript"],
+    "frameworks": ["express", "react", "prisma", "bullmq"],
+    "databases": ["postgresql", "redis"]
+  }
+}

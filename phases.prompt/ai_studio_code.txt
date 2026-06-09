@@ -1,0 +1,278 @@
+1370 ================================================================================
+1371 9. OBSERVABILITY & MONITORING (DETAILED)
+1372 ================================================================================
+1373
+1374 See "Observability Stack" in Section 4.
+1375
+1376 Additional practices:
+1377
+1378 Log Correlation:
+1379 - Generate requestId on webhook entry
+1380 - Propagate through all layers
+1381 - Include in every log line
+1382 - Use for distributed tracing
+1383
+1384 Structured Logging Best Practices:
+1385 - Use log levels correctly:
+1386 * trace: Very verbose (disabled in prod)
+1387 * debug: Detailed for debugging
+1388 * info: Normal operations
+1389 * warn: Potential issues
+1390 * error: Errors that were handled
+1391 * fatal: Unrecoverable errors
+1392 - Include context: tenantId, userId, platform, requestId
+1393 - Redact PII: phone, email, credit card
+1394
+1395 Metrics to Track:
+1396 - Business:
+1397 * Messages per platform
+1398 * Conversion rate (lead → qualified → converted)
+1399 * AI usage and cost per tenant
+1400 - Technical:
+1401 * Queue depth and processing time
+1402 * API latency (p50, p95, p99)
+1403 * Error rate per endpoint
+1404 * Database query time
+1405
+1406 Dashboards:
+1407 - Executive: Revenue, active tenants, message volume
+1408 - Operations: System health, queue depth, error rate
+1409 - Engineering: API latency, database performance, cache hit rate
+1410
+1411 Alerts:
+1412 - Critical (wake up on-call):
+1413 * API down, database down
+1414 * Error rate >10%
+1415 * DLQ depth >500
+1416 - Warning (investigate during business hours):
+1417 * Queue depth >5K
+1418 * Slow queries >1s
+1419 * Memory usage >80%
+1420
+1421 On-Call Runbooks:
+1422 - Document common issues and resolutions
+1423 - Example: "Queue depth high" → Check worker count, scale up
+1424 - Link to dashboards and logs
+1425
+1426 ================================================================================
+1427 10. SECURITY & COMPLIANCE
+1428 ================================================================================
+1429
+1430 Authentication:
+1431 - Users: JWT tokens (RS256)
+1432 * Payload: { userId, tenantId, role }
+1433 * Expiry: 1 hour
+1434 * Refresh: 7 days
+1435 - API keys: HMAC-SHA256 hashed
+1436 * Format: sk_{tenant}_{random32}
+1437 * Stored hashed in database
+1438 * Rate limited per key
+1439
+1440 Authorization:
+1441 - Role-based access control (RBAC)
+1442 * Admin: Full access
+1443 * Agent: Read/write messages, read leads
+1444 * Viewer: Read-only
+1445 - Resource-level: Can only access own tenant's data
+1446
+1447 Data Encryption:
+1448 - At rest: PostgreSQL encryption (AWS RDS default)
+1449 - In transit: TLS 1.3 for all HTTPS
+1450 - Secrets: AWS Secrets Manager or Vault
+1451
+1452 PII Handling:
+1453 - Minimal collection (only phone/email if provided)
+1454 - Redacted from logs
+1455 - GDPR compliance:
+1456 * Right to access: Export user data
+1457 * Right to deletion: Hard delete on request
+1458 * Data retention: 2 years, then auto-delete
+1459
+1460 Compliance:
+1461 - GDPR: Data processing agreement, DPA
+1462 - CCPA: Privacy policy, opt-out mechanism
+1463 - SOC 2: Audit trail in audit_logs table
+1464
+1465 Security Headers:
+1466 - X-Content-Type-Options: nosniff
+1467 - X-Frame-Options: DENY
+1468 - Content-Security-Policy: default-src 'self'
+1469 - Strict-Transport-Security: max-age=31536000
+1470
+1471 Input Validation:
+1472 - All user input sanitized
+1473 - SQL injection: Prevented by Prisma (parameterized queries)
+1474 - XSS: Sanitize before rendering in UI
+1475
+1476 Rate Limiting (Security):
+1477 - API endpoints: 100 req/min per IP
+1478 - Login: 5 attempts per 15 min per IP
+1479 - Webhook: 100 req/sec per tenant
+1480
+1481 Vulnerability Scanning:
+1482 - npm audit: Run on every build
+1483 - Dependabot: Auto-update dependencies
+1484 - Snyk: Monitor for CVEs
+1485
+1486 Incident Response:
+1487 - Security contact: security@company.com
+1488 - Response time: 24 hours for critical
+1489 - Disclosure policy: 90 days responsible disclosure
+1490
+1491 ================================================================================
+1492 11. DEPLOYMENT ARCHITECTURE
+1493 ================================================================================
+1494
+1495 Development:
+1496 - Docker Compose: All services local
+1497 - .env.local: Local environment variables
+1498 - Hot reload: nodemon for API, tsx for workers
+1499
+1500 Staging:
+1501 - Kubernetes cluster (minikube or GKE)
+1502 - Separate namespace: staging
+1503 - Deploy on every PR merge
+1504 - Synthetic testing: Automated smoke tests
+1505
+1506 Production:
+1507 - Kubernetes cluster (EKS, GKE, or AKS)
+1508 - Namespaces: production, monitoring
+1509 - Multi-zone deployment: 3 availability zones
+1510 - Auto-scaling: HPA based on CPU + queue depth
+1511
+1512 Kubernetes Resources:
+1513
+1514 API Deployment:
+1515 - Replicas: 3 (min), 10 (max)
+1516 - Resources: 500m CPU, 512Mi RAM per pod
+1517 - Liveness probe: GET /health
+1518 - Readiness probe: GET /ready
+1519
+1520 Worker Deployment:
+1521 - Replicas: 5 (min), 50 (max)
+1522 - Resources: 1 CPU, 1Gi RAM per pod
+1523 - Autoscaling: Based on queue depth
+1524 * Target: 100 jobs/worker
+1525 * Scale up if queue >500
+1526 * Scale down if queue <50
+1527
+1528 Evolution API (WhatsApp):
+1529 - StatefulSet: 1 replica (persistent session)
+1530 - Volume: 10Gi for session data
+1531 - Service: ClusterIP, port 8080
+1532
+1533 Telegram Bot API:
+1534 - StatefulSet: 1 replica
+1535 - Volume: 5Gi for session data
+1536 - Service: ClusterIP, port 8081
+1537
+1538 PostgreSQL:
+1539 - Managed service (AWS RDS, GCP Cloud SQL)
+1540 - Multi-AZ deployment
+1541 - Automated backups
+1542
+1543 Redis:
+1544 - Managed service (ElastiCache, Memorystore)
+1545 - Cluster mode: 3 shards
+1546 - Replication: 1 replica per shard
+1547
+1548 Secrets Management:
+1549 - Kubernetes Secrets for credentials
+1550 - Sealed Secrets for Git storage
+1551 - External Secrets Operator for AWS Secrets Manager
+1552
+1553 Networking:
+1554 - Ingress: nginx-ingress-controller
+1555 - TLS: Let's Encrypt (cert-manager)
+1556 - DNS: Route 53 or CloudFlare
+1557 - Load balancer: AWS ALB or GCP LB
+1558
+1559 CI/CD Pipeline (GitHub Actions):
+1560
+1561 On PR:
+1562 1. Lint (ESLint, Prettier)
+1563 2. Type check (TypeScript)
+1564 3. Unit tests (Jest)
+1565 4. Build Docker images
+1566 5. Deploy to staging
+1567 6. Run integration tests
+1568 7. Comment results on PR
+1569
+1570 On merge to main:
+1571 1. Build production images
+1572 2. Push to registry (ECR, GCR, Docker Hub)
+1573 3. Deploy to production (rolling update)
+1574 4. Run smoke tests
+1575 5. Notify Slack on success/failure
+1576
+1577 Rollback Strategy:
+1578 - Keep last 5 Docker image tags
+1579 - Instant rollback: kubectl rollout undo
+1580 - Database migrations: Reversible (down migration)
+1581
+1582 Blue-Green Deployment (Future):
+1583 - Two production environments: blue, green
+1584 - Route traffic to one while updating other
+1585 - Zero-downtime deployments
+1586
+1587 ================================================================================
+1588 12. SCALING STRATEGY
+1589 ================================================================================
+1590
+1591 Vertical Scaling:
+1592 - API pods: 500m → 2 CPU
+1593 - Worker pods: 1 CPU → 4 CPU
+1594 - Database: db.t3.medium → db.r5.xlarge
+1595
+1596 Horizontal Scaling:
+1597 - API pods: 3 → 50 replicas (HPA)
+1598 - Worker pods: 5 → 100 replicas (HPA on queue depth)
+1599 - Redis: Single → Cluster (3-9 nodes)
+1600
+1601 Database Scaling:
+1602 - Read replicas: 1 → 3
+1603 - Connection pooling: PgBouncer (500 connections)
+1604 - Partitioning: messages table by month
+1605 - Archival: Move old data (>1 year) to S3
+1606
+1607 Queue Scaling:
+1608 - Redis Cluster: Shard by key prefix
+1609 - Multiple worker pools: One per platform
+1610 - Priority queues: VIP users separate queue
+1611
+1612 Caching Strategy:
+1613 - L1: Application cache (in-memory, per pod)
+1614 - L2: Redis cache (shared)
+1615 - L3: CDN for static assets
+1616
+1617 Cost Optimization:
+1618 - Spot instances for workers (up to 70% savings)
+1619 - Reserved instances for database (up to 40% savings)
+1620 - Auto-scale down during low traffic (nights, weekends)
+1621
+1622 Performance Targets:
+1623 - API latency: p95 <200ms
+1624 - Message processing: <5s end-to-end
+1625 - Queue depth: <1000 jobs per worker
+1626 - Database queries: <100ms p95
+1627
+1628 Capacity Planning:
+1629 - 1 worker: ~100-200 messages/minute
+1630 - 10 workers: ~1000-2000 messages/minute
+1631 - 100 workers: ~10K-20K messages/minute
+1632
+1633 Bottleneck Analysis:
+1634 - If queue growing: Scale workers
+1635 - If DB slow: Add read replicas or optimize queries
+1636 - If Redis slow: Scale to cluster
+1637 - If API slow: Scale API pods or add caching
+1638
+1639 Global Expansion (Future):
+1640 - Deploy in multiple regions (US-East, EU, APAC)
+1641 - Geo-routing: Route users to nearest region
+1642 - Data residency: GDPR compliance (EU data in EU)
+1643
+1644 ================================================================================
+1645 END OF ARCHITECTURE DOCUMENT
+1646 ================================================================================
+1647

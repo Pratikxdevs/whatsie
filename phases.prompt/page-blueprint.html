@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrmV2 — Page Blueprint</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #09090b; color: #e4e4e7; padding: 2rem; line-height: 1.6; }
+    h1 { font-size: 2rem; color: #fafafa; margin-bottom: 0.25rem; }
+    .subtitle { color: #71717a; margin-bottom: 2rem; font-size: 0.95rem; }
+    .page { background: #18181b; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: 2rem; overflow: hidden; }
+    .page-header { padding: 1.5rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 1rem; }
+    .page-num { background: #4ade80; color: #000; font-weight: 700; font-size: 0.75rem; padding: 4px 10px; border-radius: 6px; }
+    .page-title { font-size: 1.25rem; color: #fafafa; }
+    .page-route { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; color: #4ade80; margin-left: auto; }
+    .page-body { padding: 1.5rem 2rem; }
+    .section { margin-bottom: 1.5rem; }
+    .section:last-child { margin-bottom: 0; }
+    .section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #71717a; margin-bottom: 0.75rem; font-weight: 600; }
+    .desc { color: #a1a1aa; font-size: 0.9rem; margin-bottom: 1rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem; }
+    .card { background: #1c1c20; border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; padding: 1rem; }
+    .card-title { font-size: 0.85rem; font-weight: 600; color: #e4e4e7; margin-bottom: 0.4rem; }
+    .card-desc { font-size: 0.8rem; color: #71717a; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 0.4rem 0; color: #a1a1aa; font-size: 0.875rem; display: flex; align-items: flex-start; gap: 0.5rem; }
+    li::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4ade80; margin-top: 0.45rem; flex-shrink: 0; }
+    .tag { display: inline-block; font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; margin-left: 0.5rem; font-weight: 600; }
+    .tag-exists { background: #14532d; color: #4ade80; }
+    .tag-new { background: #451a03; color: #fbbf24; }
+    .tag-critical { background: #450a0a; color: #f87171; }
+    .mockup { background: #0f0f12; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 1rem; font-family: 'SF Mono', monospace; font-size: 0.75rem; color: #71717a; white-space: pre; overflow-x: auto; line-height: 1.8; margin-top: 0.75rem; }
+    .mockup .highlight { color: #4ade80; }
+    .mockup .dim { color: #3f3f46; }
+    .mockup .text { color: #d4d4d8; }
+    .stats-row { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+    .stat { background: #18181b; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 1rem 1.5rem; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #4ade80; }
+    .stat-label { font-size: 0.7rem; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; }
+    .flow { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0.75rem 0; }
+    .flow-step { background: #1c1c20; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 0.4rem 0.8rem; font-size: 0.8rem; color: #d4d4d8; }
+    .flow-arrow { color: #3f3f46; font-size: 0.9rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #71717a; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    td { padding: 0.5rem 0.75rem; font-size: 0.85rem; color: #a1a1aa; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    td:first-child { color: #d4d4d8; }
+  </style>
+</head>
+<body>
+
+<h1>CrmV2 Page Blueprint</h1>
+<p class="subtitle">Every page the app needs, what goes on it, and how they connect</p>
+
+<div class="stats-row">
+  <div class="stat"><div class="stat-value">9</div><div class="stat-label">Total Pages</div></div>
+  <div class="stat"><div class="stat-value">1</div><div class="stat-label">Exists Now</div></div>
+  <div class="stat"><div class="stat-value">8</div><div class="stat-label">To Build</div></div>
+  <div class="stat"><div class="stat-value">4</div><div class="stat-label">Critical Path</div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 1: DASHBOARD -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P01</span>
+    <span class="page-title">Dashboard</span>
+    <span class="page-route">/</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">Landing page after login. Single-glance overview of everything happening across the tenant's bots, leads, and conversations.</p>
+
+    <div class="section">
+      <div class="section-title">KPI Cards Row (top)</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Active Bots</div>
+          <div class="card-desc">Count of bots with status WORKING. Click drills to Bots page.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Open Conversations</div>
+          <div class="card-desc">Conversations with status=open. Click drills to Conversations page.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">New Leads (7d)</div>
+          <div class="card-desc">Leads created in last 7 days. Click drills to Leads page.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Conversion Rate</div>
+          <div class="card-desc">(qualified + converted) / total leads as percentage.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Messages Today</div>
+          <div class="card-desc">Inbound + outbound messages in current day.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Active Workflows</div>
+          <div class="card-desc">Workflow executions with status=active.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Main Content</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Activity Feed</div>
+          <div class="card-desc">Chronological list of recent events (new lead, message received, workflow completed, bot connected). Each row links to the relevant detail page.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Lead Pipeline Funnel</div>
+          <div class="card-desc">Horizontal bar chart: new → contacted → qualified → converted. Shows count at each stage.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Bot Health Grid</div>
+          <div class="card-desc">Mini cards for each bot showing connection status (green/yellow/red dot), last message time, and message count today.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Messages Over Time</div>
+          <div class="card-desc">Line chart (Recharts) showing inbound vs outbound messages over last 7/30 days.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup">
+┌─────────────────────────────────────────────────────────────────┐
+│  <span class="highlight">Dashboard</span>                                                     │
+├────────┬────────┬────────┬────────┬────────┬────────┤
+│ <span class="highlight">3 Bots</span> │ <span class="highlight">12 Open</span>│ <span class="highlight">5 New</span>  │ <span class="highlight">42%</span>   │ <span class="highlight">234</span>   │ <span class="highlight">2 Active</span>│
+│ Active │ Convos │ Leads  │ Conv.  │ Msgs   │ Flows  │
+├────────┴────────┴────────┴────────┴────────┴────────┤
+│                                                         │
+│  <span class="text">Activity Feed</span>              │  <span class="text">Lead Pipeline</span>           │
+│  <span class="dim">10:30</span> New lead: Carlos R.    │  <span class="highlight">████████</span> New (5)          │
+│  <span class="dim">10:15</span> Msg from Emily C.      │  <span class="highlight">██████</span>   Contacted (3)    │
+│  <span class="dim">09:45</span> Workflow completed      │  <span class="highlight">████</span>     Qualified (2)    │
+│  <span class="dim">09:00</span> Bot "Sales" connected   │  <span class="highlight">██</span>       Converted (1)    │
+│                                                         │
+│  <span class="text">Bot Health</span>                │  <span class="text">Messages (7d)</span>           │
+│  <span class="highlight">[Sales]</span> <span class="highlight">●</span> 142 msgs today   │  <span class="dim">chart line here</span>          │
+│  <span class="highlight">[Support]</span> <span class="highlight">●</span> 89 msgs today   │                            │
+│  <span class="highlight">[Qualifier]</span> <span class="dim">○</span> stopped       │                            │
+└─────────────────────────────────────────────────────────────┘</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 2: BOTS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P02</span>
+    <span class="page-title">Bots / Workspaces</span>
+    <span class="page-route">/bots</span>
+    <span class="tag tag-exists">EXISTS</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">Manage WhatsApp bot instances. Create, configure, monitor connection status, and delete bots. Already built as BotsPage.tsx.</p>
+
+    <div class="section">
+      <div class="section-title">Current Features (already built)</div>
+      <ul>
+        <li>Grid of BotCards showing name, status, phone, AI engine, active leads, volume</li>
+        <li>"Add New Bot" button — creates Evolution API instance, shows QR code modal</li>
+        <li>BotSetupModal — polls for QR code, shows connection status, edit name/system prompt</li>
+        <li>Delete bot with confirmation</li>
+        <li>Backend health indicator</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Still Needed</div>
+      <ul>
+        <li>Bot detail view — click a card to see full config, conversation list, lead list for that bot</li>
+        <li>Edit bot config inline (system prompt, AI model, temperature)</li>
+        <li>Bot-level analytics — messages/day, response time, lead conversion</li>
+        <li>Start/stop/restart controls</li>
+        <li>Bulk actions (select multiple → delete/stop)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 3: CONVERSATIONS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P03</span>
+    <span class="page-title">Conversations</span>
+    <span class="page-route">/conversations</span>
+    <span class="tag tag-critical">CRITICAL</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">WhatsApp-style inbox. See all active conversations, read message history, and send replies. This is the core operational page for agents.</p>
+
+    <div class="section">
+      <div class="section-title">Layout — 3-Panel</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Left Panel — Conversation List</div>
+          <div class="card-desc">
+            <ul>
+              <li>Search bar (by name, phone, or message content)</li>
+              <li>Filter tabs: All / Open / Closed / Unread</li>
+              <li>Conversation rows: avatar/initials, name, last message preview, timestamp, unread badge</li>
+              <li>Sorted by lastMessageAt descending</li>
+              <li>Color-coded status dot (green=open, gray=closed)</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Center Panel — Message Thread</div>
+          <div class="card-desc">
+            <ul>
+              <li>Header: contact name, phone, lead status badge, linked bot name</li>
+              <li>Message bubbles — outbound (right, green), inbound (left, dark)</li>
+              <li>Timestamps between message groups</li>
+              <li>Message types: text, image thumbnail, audio player, location map link</li>
+              <li>Auto-scroll to bottom on new messages</li>
+              <li>"AI is typing..." indicator when bot is processing</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Right Panel — Contact Sidebar</div>
+          <div class="card-desc">
+            <ul>
+              <li>Lead info: name, phone, email, source, status</li>
+              <li>Quick status change dropdown (new → contacted → qualified → converted)</li>
+              <li>Attributes list (budget, timeline, company, etc.)</li>
+              <li>Active workflow indicator</li>
+              <li>Conversation metadata: platform, created date, message count</li>
+              <li>"Assign to agent" button</li>
+              <li>Notes section (agent can add internal notes)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Message Input Bar (bottom of center panel)</div>
+      <ul>
+        <li>Text input with placeholder "Type a message..."</li>
+        <li>Attach media button (image, audio, document, location)</li>
+        <li>Emoji picker</li>
+        <li>Quick reply templates dropdown</li>
+        <li>Send button (Enter to send, Shift+Enter for newline)</li>
+        <li>Toggle: "Bot auto-reply ON/OFF" per conversation</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Data Sources</div>
+      <ul>
+        <li>GET /api/conversations — list with last message preview</li>
+        <li>GET /api/conversations/:id/messages — full message history</li>
+        <li>POST /api/conversations/:id/send — send agent reply</li>
+        <li>WebSocket — real-time incoming messages via Socket.IO</li>
+      </ul>
+    </div>
+
+    <div class="mockup">
+┌──────────────────────────────────────────────────────────────────────────┐
+│  <span class="highlight">Conversations</span>                                              [<span class="text">Search...</span>] [All|Open|Closed]  │
+├────────────┬─────────────────────────────────────┬────────────────────┤
+│ <span class="text">Carlos R.</span>   │ <span class="text">Carlos Ramirez</span>                     │ <span class="text">Lead Info</span>          │
+│ <span class="dim">Can you also │ +1-555-0101 · Sales Bot            │ ──────────────     │
+│  show me...</span>  │─────────────────────────────────────│ <span class="highlight">Qualified</span>          │
+│ <span class="dim">10:30 AM</span>  ● │                                     │ Budget: $50k       │
+│────────────│ <span class="dim">Carlos:</span> Hi, I saw your ad about...  │ Timeline: Q2 2026  │
+│ <span class="text">Emily C.</span>    │                                     │ Company: BigBuyer  │
+│ <span class="dim">We are Seri</span> │ <span class="highlight">Bot:</span> Hello Carlos! Thanks for...   │                    │
+│ <span class="dim">2:00 PM</span>   ○ │                                     │ <span class="text">Workflow:</span>          │
+│────────────│ <span class="dim">Carlos:</span> That sounds great. What...  │ Lead Qualification │
+│ <span class="text">James W.</span>    │                                     │ Step 4/5           │
+│ <span class="dim">We need a s</span> │ <span class="highlight">Bot:</span> Enterprise starts at $499...  │                    │
+│ <span class="dim">May 8</span>     ○ │                                     │ <span class="text">Notes:</span>             │
+│────────────│ <span class="dim">Carlos:</span> Yes please. My budget...   │ Wants demo Tue 2PM │
+│ <span class="text">Maria S.</span>    │                                     │                    │
+│ <span class="dim">Pagamento c</span> │ <span class="highlight">Bot:</span> I have scheduled a demo...   │ [Assign Agent]     │
+│ <span class="dim">Apr 20</span>    ○ │─────────────────────────────────────│                    │
+│            │ <span class="text">Type a message...</span>          [<span class="highlight">Send</span>] │                    │
+└────────────┴─────────────────────────────────────┴────────────────────┘</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 4: LEADS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P04</span>
+    <span class="page-title">Leads</span>
+    <span class="page-route">/leads</span>
+    <span class="tag tag-critical">CRITICAL</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">CRM lead management. View all leads, filter by status/source/bot, edit details, and track through the pipeline.</p>
+
+    <div class="section">
+      <div class="section-title">View Modes (toggle)</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Table View (default)</div>
+          <div class="card-desc">Sortable columns: Name, Phone, Source, Status, Bot, Created, Last Activity. Pagination. Bulk select for export/delete.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Kanban View</div>
+          <div class="card-desc">Columns by status: New → Contacted → Qualified → Converted → Lost. Drag-and-drop to change status. Cards show name, phone, source badge.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Filters Bar</div>
+      <ul>
+        <li>Status multi-select: New, Contacted, Qualified, Converted, Lost</li>
+        <li>Source filter: WhatsApp, Website, Referral, Manual</li>
+        <li>Bot filter: which bot captured the lead</li>
+        <li>Date range: created between X and Y</li>
+        <li>Search: name, phone, email, or attribute value</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Lead Detail Slide-over (click a row)</div>
+      <ul>
+        <li>Contact info: name, phone, email, source</li>
+        <li>Status dropdown with pipeline position</li>
+        <li>Attributes editor — add/edit/delete custom key-value pairs</li>
+        <li>Linked bot and conversation (click to open Conversations page)</li>
+        <li>Workflow history — which workflows ran, current step, collected data</li>
+        <li>Timeline — every touchpoint: messages sent/received, status changes, workflow events</li>
+        <li>Notes — agent notes with timestamps</li>
+        <li>AI Score — if lead qualifier bot ran, show score and reasoning</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Actions</div>
+      <ul>
+        <li>Import leads (CSV upload)</li>
+        <li>Export leads (CSV/JSON)</li>
+        <li>Add lead manually</li>
+        <li>Delete leads (bulk)</li>
+        <li>Assign to agent</li>
+      </ul>
+    </div>
+
+    <div class="mockup">
+┌──────────────────────────────────────────────────────────────────────────┐
+│  <span class="highlight">Leads</span> (20)    [Table|Kanban]     [Status ▾] [Source ▾] [Bot ▾] [Date ▾] │
+├──────┬────────────────┬──────────────┬────────────┬───────────┬────────┤
+│ ☐    │ <span class="text">Name</span>           │ <span class="text">Phone</span>        │ <span class="text">Source</span>     │ <span class="text">Status</span>    │ <span class="text">Bot</span>    │
+├──────┼────────────────┼──────────────┼────────────┼───────────┼────────┤
+│ ☐    │ Carlos Ramirez │ +1-555-0101  │ <span class="highlight">WhatsApp</span>  │ <span class="highlight">Qualified</span> │ Sales  │
+│ ☐    │ Emily Chen     │ +1-555-0102  │ <span class="highlight">WhatsApp</span>  │ <span class="dim">New</span>       │ Sales  │
+│ ☐    │ James Wilson   │ +1-555-0103  │ <span class="highlight">WhatsApp</span>  │ <span class="text">Contacted</span> │ Sales  │
+│ ☐    │ Maria Santos   │ +55-11-9999  │ <span class="highlight">WhatsApp</span>  │ <span class="highlight">Converted</span>│ Sales  │
+│ ☐    │ Alex Johnson   │ +1-555-0105  │ <span class="highlight">WhatsApp</span>  │ <span class="dim">New</span>       │Support │
+│ ☐    │ Priya Patel    │ +91-98765-4  │ <span class="highlight">WhatsApp</span>  │ <span class="text">Contacted</span> │Support │
+│ ☐    │ David Kim      │ +82-10-1234  │ <span class="highlight">WhatsApp</span>  │ <span class="highlight">Qualified</span> │Qualify │
+│ ☐    │ Sophie Martin  │ +33-6-1234   │ <span class="highlight">WhatsApp</span>  │ <span class="dim">New</span>       │ Sales  │
+│ ☐    │ Tom Anderson   │ +44-7700-90  │ <span class="text">Website</span>   │ <span class="dim">New</span>       │ —      │
+│ ☐    │ Yuki Tanaka    │ +81-90-1234  │ <span class="text">Referral</span>  │ <span class="text">Contacted</span> │ —      │
+└──────┴────────────────┴──────────────┴────────────┴───────────┴────────┘
+  Showing 1-10 of 20 leads                                        [<span class="highlight">1</span>][2]</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 5: WORKFLOWS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P05</span>
+    <span class="page-title">Workflows</span>
+    <span class="page-route">/workflows</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">Multi-step conversational flows. Define guided conversations that bots walk leads through (qualification, onboarding, support triage).</p>
+
+    <div class="section">
+      <div class="section-title">Workflow List Page</div>
+      <ul>
+        <li>Card grid showing each workflow: name, trigger intent, step count, active executions count</li>
+        <li>"Create Workflow" button opens builder</li>
+        <li>Duplicate / Delete / Archive actions per workflow</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Workflow Builder (detail page or modal)</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Step Editor</div>
+          <div class="card-desc">
+            <ul>
+              <li>Vertical timeline of steps</li>
+              <li>Each step: key (variable name), prompt (what bot says), expected input type</li>
+              <li>Conditions: branch logic (if budget > $50k → skip to step 4)</li>
+              <li>Drag to reorder steps</li>
+              <li>Add/remove steps</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Trigger Config</div>
+          <div class="card-desc">
+            <ul>
+              <li>Trigger type: keyword match, intent, manual, new conversation</li>
+              <li>Keywords: comma-separated trigger words</li>
+              <li>Bot assignment: which bot runs this workflow</li>
+              <li>Fallback: what happens if workflow fails/times out</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Execution Monitor</div>
+      <ul>
+        <li>Table of active/completed executions</li>
+        <li>Columns: Lead name, current step, status, started at, duration</li>
+        <li>Click to see collected data at each step</li>
+        <li>Retry / Cancel / Reset execution</li>
+      </ul>
+    </div>
+
+    <div class="mockup">
+┌──────────────────────────────────────────────────────────────────┐
+│  <span class="highlight">Workflows</span>                              [+ Create Workflow]   │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
+│  │ <span class="text">Lead Qualification</span>│  │ <span class="text">Customer Onboard</span>│  │ <span class="text">Support Ticket</span>  │ │
+│  │ <span class="dim">Trigger: new_lead</span> │  │ <span class="dim">Trigger: signup</span>  │  │ <span class="dim">Trigger: support</span>│ │
+│  │ <span class="dim">5 steps</span>           │  │ <span class="dim">4 steps</span>           │  │ <span class="dim">3 steps</span>           │ │
+│  │ <span class="highlight">2 active</span>          │  │ <span class="dim">0 active</span>          │  │ <span class="highlight">1 active</span>          │ │
+│  │ [Edit] [Run Log] │  │ [Edit] [Run Log] │  │ [Edit] [Run Log] │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
+│                                                                  │
+│  <span class="text">Lead Qualification — Step Editor</span>                              │
+│  ┌─ <span class="highlight">1.</span> <span class="text">greeting</span> ──────────────────────────────────────────┐  │
+│  │  Prompt: "Welcome! What is your name?"                    │  │
+│  │  Input: text                                              │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│       │                                                          │
+│  ┌─ <span class="highlight">2.</span> <span class="text">company</span> ───────────────────────────────────────────┐  │
+│  │  Prompt: "What company are you with?"                     │  │
+│  │  Input: text                                              │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│       │                                                          │
+│  ┌─ <span class="highlight">3.</span> <span class="text">budget</span> ────────────────────────────────────────────┐  │
+│  │  Prompt: "What is your budget range?"                     │  │
+│  │  Input: text                                              │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 6: CONTACTS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P06</span>
+    <span class="page-title">Contacts</span>
+    <span class="page-route">/contacts</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">Address book of all WhatsApp contacts. Unlike Leads (which tracks pipeline status), Contacts is a directory of everyone the bots have interacted with.</p>
+
+    <div class="section">
+      <div class="section-title">Contact List</div>
+      <ul>
+        <li>Searchable table: name, phone, tags, last interaction, linked lead status</li>
+        <li>Auto-populated from WhatsApp conversations</li>
+        <li>Manual add/edit for non-WhatsApp contacts</li>
+        <li>Tags: custom labels (VIP, enterprise, churned, etc.)</li>
+        <li>Bulk operations: tag, export, delete</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Contact Detail</div>
+      <ul>
+        <li>Full contact info with edit capability</li>
+        <li>Conversation history across all bots</li>
+        <li>Lead record link (if exists)</li>
+        <li>Custom fields (key-value pairs)</li>
+        <li>Notes with timestamps</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 7: ANALYTICS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P07</span>
+    <span class="page-title">Analytics</span>
+    <span class="page-route">/analytics</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">Data-driven insights. Charts, metrics, and reports across bots, conversations, leads, and AI usage.</p>
+
+    <div class="section">
+      <div class="section-title">Dashboard Sections</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Messaging Metrics</div>
+          <div class="card-desc">
+            <ul>
+              <li>Messages over time (line chart, inbound vs outbound)</li>
+              <li>Messages by bot (stacked bar)</li>
+              <li>Average response time</li>
+              <li>Busiest hours heatmap</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Lead Metrics</div>
+          <div class="card-desc">
+            <ul>
+              <li>Leads over time (line chart)</li>
+              <li>Pipeline funnel (new → converted)</li>
+              <li>Conversion rate by bot</li>
+              <li>Lead source breakdown (pie chart)</li>
+              <li>Average time to conversion</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">AI Performance</div>
+          <div class="card-desc">
+            <ul>
+              <li>AI token usage over time</li>
+              <li>Cost breakdown by model</li>
+              <li>Workflow completion rate</li>
+              <li>Fallback/escalation rate</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Bot Performance</div>
+          <div class="card-desc">
+            <ul>
+              <li>Uptime per bot</li>
+              <li>Conversations per bot</li>
+              <li>Leads generated per bot</li>
+              <li>Error rate</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Controls</div>
+      <ul>
+        <li>Date range picker (7d, 30d, 90d, custom)</li>
+        <li>Bot filter (all or specific)</li>
+        <li>Export charts as PNG/CSV</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 8: SETTINGS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P08</span>
+    <span class="page-title">Settings</span>
+    <span class="page-route">/settings</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">Tenant configuration, user management, API keys, billing, and integrations.</p>
+
+    <div class="section">
+      <div class="section-title">Tabs</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">General</div>
+          <div class="card-desc">
+            <ul>
+              <li>Tenant name</li>
+              <li>Default AI model (Groq/OpenAI/Gemini)</li>
+              <li>Default system prompt template</li>
+              <li>Timezone</li>
+              <li>Language</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Team</div>
+          <div class="card-desc">
+            <ul>
+              <li>User list: email, role, status, last active</li>
+              <li>Invite user (email + role)</li>
+              <li>Change role / Remove user</li>
+              <li>Roles: Admin, Agent, Viewer</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">API Keys</div>
+          <div class="card-desc">
+            <ul>
+              <li>List of API keys: name, created, last used</li>
+              <li>Generate new key (shows once, copy to clipboard)</li>
+              <li>Revoke key</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Integrations</div>
+          <div class="card-desc">
+            <ul>
+              <li>Evolution API connection config</li>
+              <li>Groq API key</li>
+              <li>OpenAI API key</li>
+              <li>Webhook URL config</li>
+              <li>Chatwoot integration toggle</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Billing</div>
+          <div class="card-desc">
+            <ul>
+              <li>Current plan (Free/Pro/Enterprise)</li>
+              <li>Usage meters: messages, AI tokens, storage</li>
+              <li>Invoices list</li>
+              <li>Upgrade/downgrade buttons</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Danger Zone</div>
+          <div class="card-desc">
+            <ul>
+              <li>Delete tenant (irreversible, type confirm)</li>
+              <li>Export all data (JSON/CSV)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 9: LOGIN / REGISTER -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">P09</span>
+    <span class="page-title">Login / Register</span>
+    <span class="page-route">/login, /register</span>
+    <span class="tag tag-critical">CRITICAL</span>
+    <span class="tag tag-new">NEW</span>
+  </div>
+  <div class="page-body">
+    <p class="desc">Authentication pages. Currently the backend has auth routes but the frontend has no login flow — it uses a hardcoded API key.</p>
+
+    <div class="section">
+      <div class="section-title">Login Page</div>
+      <ul>
+        <li>Email + Password fields</li>
+        <li>"Remember me" checkbox</li>
+        <li>"Forgot password?" link</li>
+        <li>Submit → POST /api/auth/login → store JWT in httpOnly cookie or localStorage</li>
+        <li>Redirect to Dashboard on success</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Register Page</div>
+      <ul>
+        <li>Company name, Email, Password, Confirm Password</li>
+        <li>Creates tenant + admin user in one flow</li>
+        <li>Submit → POST /api/auth/register → auto-login → redirect to Dashboard</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Auth Flow</div>
+      <div class="flow">
+        <span class="flow-step">User visits /</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">No JWT?</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Redirect /login</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Login OK</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Store token</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Redirect /dashboard</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- NAVIGATION MAP -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <span class="page-num">NAV</span>
+    <span class="page-title">Navigation Structure</span>
+  </div>
+  <div class="page-body">
+    <div class="section">
+      <div class="section-title">Sidebar (left, collapsible)</div>
+      <table>
+        <tr><th>Icon</th><th>Label</th><th>Route</th><th>Badge</th></tr>
+        <tr><td>LayoutDashboard</td><td>Dashboard</td><td>/</td><td>—</td></tr>
+        <tr><td>Bot</td><td>Bots</td><td>/bots</td><td>active count</td></tr>
+        <tr><td>MessageSquare</td><td>Conversations</td><td>/conversations</td><td>unread count</td></tr>
+        <tr><td>Users</td><td>Leads</td><td>/leads</td><td>new count</td></tr>
+        <tr><td>GitBranch</td><td>Workflows</td><td>/workflows</td><td>active count</td></tr>
+        <tr><td>Contact</td><td>Contacts</td><td>/contacts</td><td>—</td></tr>
+        <tr><td>BarChart3</td><td>Analytics</td><td>/analytics</td><td>—</td></tr>
+        <tr><td>Settings</td><td>Settings</td><td>/settings</td><td>—</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Top Bar (existing TopNav.tsx)</div>
+      <ul>
+        <li>Left: hamburger (toggle sidebar) + current page breadcrumb</li>
+        <li>Center: search (global search across leads, conversations, contacts)</li>
+        <li>Right: notifications bell + user avatar dropdown (profile, settings, logout)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

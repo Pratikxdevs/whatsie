@@ -1,0 +1,7 @@
+# BYPASS ALL — Admin Dev Mode
+# Everything bypassed for development/testing:
+# - Authentication: DEV_AUTH_BYPASS=true (no JWT required)
+# - Tenant: DEFAULT_TENANT_ID=test-tenant-id (auto-assigned)
+# - Quota: FREE_TIER_DAILY_LIMIT=999999 (no limit)
+# - Signature: Gateway skips HMAC verification when DEV_AUTH_BYPASS=true
+# - Rate limiting: Still active (100 req/sec per tenant)

@@ -1,0 +1,316 @@
+663
+664 LAYER 7: CRM INTEGRATION LAYER
+665 -------------------------------
+666 PURPOSE: Persist lead data, conversation history, analytics.
+667
+668 Data Models (PostgreSQL):
+669
+670 tenants:
+671 - id (UUID, PK)
+672 - name (string)
+673 - plan ('free' | 'pro' | 'enterprise')
+674 - status ('active' | 'suspended' | 'cancelled')
+675 - createdAt, updatedAt
+676
+677 users:
+678 - id (UUID, PK)
+679 - tenantId (UUID, FK)
+680 - email, passwordHash
+681 - role ('admin' | 'agent' | 'viewer')
+682 - createdAt, updatedAt
+683
+684 leads:
+685 - id (UUID, PK)
+686 - tenantId (UUID, FK)
+687 - name (string, nullable)
+688 - phone (string, nullable)
+689 - email (string, nullable)
+690 - status ('new' | 'contacted' | 'qualified' | 'converted' | 'lost')
+691 - source (platform where first seen)
+692 - assignedTo (UUID, FK to users, nullable)
+693 - metadata (JSONB for custom fields)
+694 - createdAt, updatedAt
+695
+696 conversations:
+697 - id (UUID, PK)
+698 - tenantId (UUID, FK)
+699 - leadId (UUID, FK)
+700 - platform (string)
+701 - platformUserId (string, indexed)
+702 - platformConversationId (string)
+703 - status ('active' | 'closed' | 'transferred')
+704 - lastMessageAt (timestamp)
+705 - createdAt
+706
+707 messages:
+708 - id (UUID, PK)
+709 - tenantId (UUID, FK)
+710 - conversationId (UUID, FK)
+711 - direction ('inbound' | 'outbound')
+712 - content (TEXT)
+713 - attachments (JSONB)
+714 - sentAt (timestamp)
+715 - deliveredAt (timestamp, nullable)
+716 - readAt (timestamp, nullable)
+717 - metadata (JSONB, stores normalized + raw)
+718
+719 events:
+720 - id (UUID, PK)
+721 - tenantId (UUID, FK)
+722 - leadId (UUID, FK)
+723 - type ('message_sent' | 'message_received' | 'status_changed' | 'workflow_started' | 'ai_calle
+d')
+724 - data (JSONB)
+725 - createdAt
+726
+727 workflows:
+728 - id (UUID, PK)
+729 - tenantId (UUID, FK)
+730 - name (string)
+731 - trigger (JSONB)
+732 - steps (JSONB)
+733 - status ('active' | 'paused' | 'archived')
+734 - createdAt, updatedAt
+735
+736 workflow_executions:
+737 - id (UUID, PK)
+738 - tenantId (UUID, FK)
+739 - workflowId (UUID, FK)
+740 - leadId (UUID, FK)
+741 - status ('in_progress' | 'completed' | 'failed')
+742 - currentStep (integer)
+743 - variables (JSONB)
+744 - startedAt, completedAt
+745
+746 Indexes:
+747 - leads: (tenantId, status), (tenantId, createdAt)
+748 - conversations: (tenantId, platformUserId), (leadId)
+749 - messages: (conversationId, sentAt), (tenantId, sentAt)
+750 - events: (tenantId, leadId, createdAt)
+751
+752 Row-Level Security:
+753 - Enable RLS on all tables
+754 - Policy: WHERE tenantId = current_setting('app.tenantId')::uuid
+755
+756 Lead Lifecycle:
+757 1. First message from unknown user → Create lead (status: new)
+758 2. Bot responds → status: contacted
+759 3. Intent classifier detects interest → status: qualified
+760 4. Workflow completes → status: converted or lost
+761
+762 CRM Operations:
+763
+764 Lead Writer:
+765 - Upsert lead on every inbound message
+766 - Update lastMessageAt
+767 - Merge metadata if new info detected (name, email from message)
+768
+769 Stage Tracker:
+770 - State machine: new → contacted → qualified → converted/lost
+771 - Triggered by:
+772 * Workflow completion
+773 * Manual agent update
+774 * AI classification (e.g., "not interested" → lost)
+775
+776 Event Logger:
+777 - Log every interaction as event
+778 - Used for:
+779 * Analytics (conversion funnel)
+780 * Audit trail
+781 * Debugging
+782
+783 Task Scheduler (via Workflow Engine):
+784 - Create delayed jobs for follow-ups
+785 - Example: If no reply in 24h → queue reminder message
+786
+787 Queries (via Prisma):
+788 - Get lead with conversations: prisma.lead.findUnique({
+789 where: { id, tenantId },
+790 include: { conversations: { include: { messages: true } } }
+791 })
+792 - Recent messages: prisma.message.findMany({
+793 where: { conversationId, tenantId },
+794 orderBy: { sentAt: 'desc' },
+795 take: 10
+796 })
+797
+798 Critical Rules:
+799 - ALWAYS filter by tenantId
+800 - Use transactions for multi-table updates
+801 - Store raw message in metadata for debugging
+802 - Index on high-cardinality columns (userId, conversationId)
+803
+804 ---
+805
+806 LAYER 8: RATE LIMIT ORCHESTRATOR
+807 ---------------------------------
+808 PURPOSE: Prevent API bans, throttle outbound messages per platform.
+809
+810 Per-Platform Limits:
+811
+812 WhatsApp (Evolution API):
+813 - Official Meta limits apply if using Cloud API
+814 - Evolution API (unofficial): ~1000 messages/day safe
+815 - Strategy: 1 message/second burst, 500/day sustained
+816
+817 Telegram:
+818 - 30 messages/second per bot
+819 - 20 messages/minute to same user
+820 - Strategy: Token bucket, 30 tokens/sec refill
+821
+822 Discord:
+823 - 5 requests/second per bot
+824 - 50 messages/minute per channel
+825 - Strategy: Global + per-channel token buckets
+826
+827 Meta (Messenger + Instagram):
+828 - Messenger: 300 messages/second per page
+829 - Instagram: 200 messages/hour per account
+830 - Constraint: 24-hour messaging window
+831 - Strategy: Strict token bucket, 200/hour for Instagram
+832
+833 Teams:
+834 - No official limit, but 1000/day is safe
+835 - Strategy: Leaky bucket, 1/second
+836
+837 Twitch:
+838 - Chat: 20 messages/30sec (verified bots: 100/30sec)
+839 - EventSub: No limit on incoming
+840 - Strategy: Token bucket, 20 tokens/30sec refill
+841
+842 Twitter:
+843 - DMs: 500/day (free tier), 15000/day (paid)
+844 - Tweets: 300/3hours
+845 - Strategy: Daily quota tracking + rate limiter
+846
+847 Implementation (Bottleneck.js):
+848
+849 const limiters = {
+850 whatsapp: new Bottleneck({
+851 reservoir: 500, // 500 tokens
+852 reservoirRefreshAmount: 500,
+853 reservoirRefreshInterval: 24 * 60 * 60 * 1000, // daily
+854 maxConcurrent: 1,
+855 minTime: 1000 // 1/second
+856 }),
+857 telegram: new Bottleneck({
+858 reservoir: 30,
+859 reservoirRefreshAmount: 30,
+860 reservoirRefreshInterval: 1000, // 30/sec
+861 maxConcurrent: 5
+862 }),
+863 instagram: new Bottleneck({
+864 reservoir: 200,
+865 reservoirRefreshAmount: 200,
+866 reservoirRefreshInterval: 60 * 60 * 1000, // 200/hour
+867 maxConcurrent: 1,
+868 minTime: 18000 // ~200/hour = 1 every 18s
+869 })
+870 // ... other platforms
+871 }
+872
+873 async function sendWithRateLimit(platform, sendFn) {
+874 return limiters[platform].schedule(() => sendFn())
+875 }
+876
+877 Redis Token Bucket (alternative):
+878
+879 Key: ratelimit:{platform}:{identifier}
+880 Value: remaining_tokens
+881 Commands:
+882 - DECR: Take a token
+883 - TTL + EXPIRE: Refill tokens on interval
+884 - If tokens <= 0: Reject or queue
+885
+886 Backpressure Handling:
+887 - If rate limit hit → pause queue consumption
+888 - Resume when tokens refill
+889 - Don't retry immediately (causes thundering herd)
+890
+891 Monitoring:
+892 - Track: tokens_used, tokens_remaining, rate_limit_hits
+893 - Alert: If hitting limit >10 times/hour
+894
+895 Critical Rules:
+896 - NEVER bypass rate limiter
+897 - Per-tenant rate limits separate from platform limits
+898 - Log all rate limit hits for capacity planning
+899 - Graceful degradation (queue, don't drop)
+900
+901 ---
+902
+903 LAYER 9: RESPONSE ROUTER
+904 -------------------------
+905 PURPOSE: Send final response back to user via correct platform.
+906
+907 Flow:
+908 1. Receive response from worker (unified format)
+909 2. Denormalize to platform-specific payload (use Layer 3 renderer)
+910 3. Apply rate limiter (Layer 8)
+911 4. Call platform adapter (Layer 1)
+912 5. Log delivery status
+913 6. Update message record in DB
+914
+915 Response Schema (unified):
+916 {
+917 tenantId: string
+918 platform: string
+919 userId: string
+920 conversationId: string
+921 message: {
+922 text: string
+923 attachments?: Array<{ type, url }>
+924 buttons?: Array<{ label, payload }>
+925 quickReplies?: Array<{ label, payload }>
+926 }
+927 metadata: {
+928 replyTo?: string
+929 notification?: boolean
+930 }
+931 }
+932
+933 Platform Selector:
+934 - Route to correct adapter based on response.platform
+935 - Fallback: If adapter unavailable → queue for retry
+936
+937 Format Converter (Outbound Renderer):
+938 - Use Layer 3 normalizer's outbound renderer
+939 - Platform-specific transformations:
+940 * WhatsApp: buttons → list message or reply buttons
+941 * Telegram: buttons → inline keyboard
+942 * Discord: buttons → message components
+943 * Meta: buttons → quick replies or template buttons
+944 * Teams: buttons → Adaptive Card actions
+945
+946 Send Executor:
+947 - Wrap in rate limiter: sendWithRateLimit(platform, () => adapter.send())
+948 - Retry on transient errors (network, 5xx)
+949 - No retry on permanent errors (invalid recipient, blocked user)
+950
+951 Delivery Tracker:
+952 - Update messages table:
+953 * deliveredAt: when API returns success
+954 * failedAt: if permanent failure
+955 * errorReason: if failed
+956 - Platform-specific receipts:
+957 * WhatsApp: Delivery + read receipts via webhook
+958 * Telegram: No read receipts
+959 * Discord: No delivery confirmation
+960 * Meta: Delivery + read receipts via webhook
+961
+962 Error Handling:
+963 - 429 Rate Limit: Back off, retry after delay
+964 - 4xx Client Error: Log, don't retry, alert
+965 - 5xx Server Error: Retry up to 3 times
+966 - Network Error: Retry with exponential backoff
+967
+968 Monitoring:
+969 - Metrics: messages_sent, send_latency, send_errors
+970 - Alert: Error rate >5%, latency >5s
+971
+972 Critical Rules:
+973 - ALWAYS denormalize before sending
+974 - Log every send attempt
+975 - Handle platform-specific errors gracefully
+976 - Update DB even on failure (for debugging)
+977

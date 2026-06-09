@@ -1,0 +1,182 @@
+289
+290 LAYER 3: MESSAGE NORMALIZER (BIDIRECTIONAL)
+291 --------------------------------------------
+292 PURPOSE: Convert platform payloads to/from unified internal format.
+293
+294 Unified Message Schema:
+295 {
+296 tenantId: string (UUID)
+297 platform: 'whatsapp' | 'telegram' | 'discord' | 'messenger' | 'instagram' | 'teams' | 'twitch' |
+'twitter'
+298 userId: string (platform-specific ID, e.g. PSID, Discord snowflake)
+299 conversationId: string (thread/channel ID)
+300 message: {
+301 text: string | null
+302 attachments: Array<{
+303 type: 'image' | 'video' | 'audio' | 'file'
+304 url: string
+305 mimeType: string
+306 size: number
+307 }>
+308 quickReplies: Array<{ label: string, payload: string }> | null
+309 }
+310 type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'location' | 'contact' | 'sticker' | 'butt
+on_click'
+311 timestamp: ISO8601 string
+312 metadata: {
+313 raw: object (original platform payload)
+314 replyTo: string | null (message ID being replied to)
+315 isForwarded: boolean
+316 mentions: string[] (user IDs mentioned)
+317 }
+318 }
+319
+320 Inbound Parser:
+321 - Accepts raw webhook payload per platform
+322 - Extracts core fields into unified schema
+323 - Downloads attachments to temp storage (S3/local)
+324 - Stores raw payload in metadata.raw for debugging
+325 - Returns NormalizedMessage
+326
+327 Outbound Renderer:
+328 - Accepts unified response format
+329 - Converts to platform-specific payload
+330 - Maps rich content:
+331 * Buttons → WhatsApp list messages
+332 * Buttons → Telegram inline keyboards
+333 * Buttons → Discord components
+334 * Buttons → Meta quick replies
+335 - Handles fallbacks when feature unsupported
+336 - Returns platform-ready payload
+337
+338 Platform-Specific Mappings:
+339
+340 WhatsApp (Evolution API):
+341 Inbound: webhook.data.message.conversation → message.text
+342 webhook.data.message.imageMessage → attachment
+343 Outbound: text → {number, text}
+344 buttons → {number, buttonMessage: {text, buttons}}
+345
+346 Telegram:
+347 Inbound: update.message.text → message.text
+348 update.message.photo → attachment
+349 Outbound: text → {chat_id, text}
+350 buttons → {chat_id, text, reply_markup: {inline_keyboard}}
+351
+352 Discord:
+353 Inbound: message.content → message.text
+354 message.attachments → attachments array
+355 Outbound: text → {content}
+356 embeds → {embeds: [{title, description, fields}]}
+357
+358 Meta (FB + Instagram):
+359 Inbound: messaging[0].message.text → message.text
+360 messaging[0].message.attachments → attachments
+361 Outbound: text → {recipient: {id}, message: {text}}
+362 buttons → {message: {attachment: {type: template, buttons}}}
+363
+364 Teams:
+365 Inbound: activity.text → message.text
+366 activity.attachments → attachments
+367 Outbound: text → {type: message, text}
+368 cards → {type: message, attachments: [AdaptiveCard]}
+369
+370 Twitch:
+371 Inbound: event.message.text → message.text
+372 Outbound: text → chatClient.say(channel, text)
+373
+374 Twitter:
+375 Inbound: direct_message_events[0].message_create.message_data.text → text
+376 Outbound: text → {event: {type: message_create, message_data: {text}}}
+377
+378 Critical Rules:
+379 - NEVER lose information during normalization
+380 - metadata.raw preserves original payload for debugging
+381 - Outbound rendering must handle missing features gracefully
+382 - Test with real webhook payloads from each platform
+383
+384 ---
+385
+386 LAYER 4: QUEUE LAYER (BullMQ + Redis)
+387 --------------------------------------
+388 PURPOSE: Buffer message processing, survive spikes, enable retries.
+389
+390 Queue Topology:
+391
+392 Per-Platform Queues:
+393 - whatsapp-messages
+394 - telegram-messages
+395 - discord-messages
+396 - meta-messages (FB + Instagram combined)
+397 - teams-messages
+398 - twitch-messages
+399 - twitter-messages
+400
+401 Priority Lanes (within each queue):
+402 - VIP users: priority 1
+403 - Standard: priority 5
+404 - Bulk/automated: priority 10
+405
+406 Special Queues:
+407 - scheduled-messages (delayed jobs for follow-ups)
+408 - webhook-retries (failed webhook deliveries)
+409 - ai-requests (long-running AI calls, separate pool)
+410
+411 Job Schema:
+412 {
+413 id: string (auto-generated)
+414 tenantId: string
+415 platform: string
+416 normalizedMessage: NormalizedMessage
+417 priority: number
+418 attempts: number
+419 timestamp: number
+420 metadata: {
+421 queuedAt: timestamp
+422 retryCount: number
+423 originalJobId: string (if retry)
+424 }
+425 }
+426
+427 Queue Configuration:
+428
+429 Concurrency:
+430 - whatsapp-messages: 50 workers
+431 - telegram-messages: 100 workers
+432 - discord-messages: 200 workers (highest throughput)
+433 - meta-messages: 30 workers (rate limited)
+434 - others: 50 workers
+435
+436 Retry Strategy:
+437 - Max attempts: 5
+438 - Backoff: exponential (1min, 2min, 4min, 8min, 16min)
+439 - Conditions:
+440 * Retry on network errors
+441 * Retry on 429 rate limit (after backoff)
+442 * Retry on 5xx server errors
+443 * NO retry on 4xx client errors (except 429)
+444
+445 Dead Letter Queue (DLQ):
+446 - After 5 failed attempts → move to dlq-{platform}
+447 - DLQ never auto-retries
+448 - Manual replay via admin dashboard
+449 - Alert on DLQ depth > 100
+450
+451 Job Cleanup:
+452 - Completed jobs: retain 24 hours then delete
+453 - Failed jobs: retain 7 days then delete
+454 - DLQ: retain 30 days
+455
+456 Redis Configuration:
+457 - Persistence: RDB snapshot every 5 minutes + AOF
+458 - Memory policy: allkeys-lru
+459 - Dedicated Redis instance for queues (not shared with cache)
+460 - Cluster mode if handling >100K messages/day
+461
+462 Critical Rules:
+463 - NEVER process messages synchronously in webhook handler
+464 - Queue immediately, respond 200 OK, process async
+465 - Monitor queue depth per platform
+466 - Alert if queue depth > 10K or processing time > 30s
+467
+468 ---
