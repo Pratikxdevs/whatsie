@@ -2,12 +2,6 @@ import { Settings, Wifi, WifiOff, AlertCircle } from "lucide-react";
 
 const platforms = [
   { id: "whatsapp", name: "WhatsApp", color: "text-[#25D366]", bgColor: "bg-[#25D366]/10", status: "connected" },
-  { id: "telegram", name: "Telegram", color: "text-[#0088cc]", bgColor: "bg-[#0088cc]/10", status: "connected" },
-  { id: "discord", name: "Discord", color: "text-[#5865F2]", bgColor: "bg-[#5865F2]/10", status: "disconnected" },
-  { id: "messenger", name: "Messenger", color: "text-[#0078FF]", bgColor: "bg-[#0078FF]/10", status: "disconnected" },
-  { id: "instagram", name: "Instagram", color: "text-[#E4405F]", bgColor: "bg-[#E4405F]/10", status: "error" },
-  { id: "teams", name: "MS Teams", color: "text-[#6264A7]", bgColor: "bg-[#6264A7]/10", status: "disconnected" },
-  { id: "twitter", name: "Twitter/X", color: "text-zinc-300", bgColor: "bg-zinc-300/10", status: "disconnected" },
 ];
 
 const aiProviders = [

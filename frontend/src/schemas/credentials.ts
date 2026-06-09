@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const providers = ['groq', 'openai', 'openrouter', 'gemini', 'evolution', 'telegram', 'discord', 'twitter'] as const;
+const providers = ['groq', 'openai', 'openrouter', 'gemini', 'evolution'] as const;
 
 export const credentialFormSchema = z.object({
   provider: z.enum(providers, { message: 'Select a provider' }),

@@ -22,9 +22,6 @@ const PROVIDERS = [
   { value: "openrouter", label: "OpenRouter" },
   { value: "gemini", label: "Google Gemini" },
   { value: "evolution", label: "Evolution API" },
-  { value: "telegram", label: "Telegram" },
-  { value: "discord", label: "Discord" },
-  { value: "twitter", label: "Twitter/X" },
 ];
 
 const providerColors: Record<string, string> = {
@@ -33,9 +30,6 @@ const providerColors: Record<string, string> = {
   openrouter: "bg-blue-500/10 text-blue-400",
   gemini: "bg-purple-500/10 text-purple-400",
   evolution: "bg-cyan-500/10 text-cyan-400",
-  telegram: "bg-sky-500/10 text-sky-400",
-  discord: "bg-indigo-500/10 text-indigo-400",
-  twitter: "bg-zinc-500/10 text-zinc-400",
 };
 
 function maskKey(key: string): string {

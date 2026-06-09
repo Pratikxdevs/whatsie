@@ -8,12 +8,6 @@ interface PlatformStepProps {
 
 const platforms = [
   { id: "whatsapp", name: "WhatsApp", color: "border-[#25D366]/30 hover:border-[#25D366]", bgColor: "bg-[#25D366]/10", textColor: "text-[#25D366]" },
-  { id: "telegram", name: "Telegram", color: "border-[#0088cc]/30 hover:border-[#0088cc]", bgColor: "bg-[#0088cc]/10", textColor: "text-[#0088cc]" },
-  { id: "discord", name: "Discord", color: "border-[#5865F2]/30 hover:border-[#5865F2]", bgColor: "bg-[#5865F2]/10", textColor: "text-[#5865F2]" },
-  { id: "messenger", name: "Messenger", color: "border-[#0078FF]/30 hover:border-[#0078FF]", bgColor: "bg-[#0078FF]/10", textColor: "text-[#0078FF]" },
-  { id: "instagram", name: "Instagram", color: "border-[#E4405F]/30 hover:border-[#E4405F]", bgColor: "bg-[#E4405F]/10", textColor: "text-[#E4405F]" },
-  { id: "teams", name: "MS Teams", color: "border-[#6264A7]/30 hover:border-[#6264A7]", bgColor: "bg-[#6264A7]/10", textColor: "text-[#6264A7]" },
-  { id: "twitter", name: "Twitter/X", color: "border-zinc-500/30 hover:border-zinc-400", bgColor: "bg-zinc-500/10", textColor: "text-zinc-300" },
 ];
 
 export function PlatformStep({ onNext, onBack }: PlatformStepProps) {

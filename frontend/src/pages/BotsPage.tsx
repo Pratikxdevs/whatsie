@@ -27,7 +27,7 @@ function mapWorkspaceToBot(ws: any): Bot {
     name: ws.name,
     platform: ws.platform || 'whatsapp',
     status: ws.status === 'connected' ? 'connected' : ws.status === 'pending_qr' ? 'pending_qr' : ws.status === 'starting' ? 'starting' : ws.status === 'scanned' ? 'scanned' : ws.status === 'error' ? 'error' : 'disconnected',
-    identifier: ws.platform === 'telegram' ? (ws.session_id || 'telegram-bot') : (ws.session_id || ws.id),
+    identifier: ws.session_id || ws.id,
     aiEngine: ws.ai_engine || 'groq',
     temperature: ws.temperature || 0.7,
     maxTokens: ws.max_tokens || 1024,
@@ -158,23 +158,6 @@ export function BotsPage() {
     } else {
       // Start the bot
       setBots(prev => prev.map(b => b.id === id ? { ...b, status: 'starting' } : b));
-
-      // Telegram and Discord bots connect instantly — no QR needed
-      if (bot.platform === 'telegram' || bot.platform === 'discord') {
-        try {
-          const res = await botApi.startWorkspace(id);
-          const newStatus: BotStatus = res.sessionInfo.status === 'connected' ? 'connected' : 'starting';
-          setBots(prev => prev.map(b => b.id === id ? {
-            ...b,
-            status: newStatus,
-            lastConnected: newStatus === 'connected' ? new Date().toISOString() : b.lastConnected,
-          } : b));
-        } catch (err) {
-          console.error('Failed to start Telegram bot:', err);
-          setBots(prev => prev.map(b => b.id === id ? { ...b, status: 'error' } : b));
-        }
-        return;
-      }
 
       // WhatsApp — show QR modal
       setQrModal({ botId: id, botName: bot.name, qrCode: null, status: 'loading', platform: bot.platform });
@@ -451,24 +434,6 @@ export function BotsPage() {
               setBots(prev => prev.map(b => b.id === id ? { ...b, status: 'starting' } : b));
               const bot = botsRef.current.find(b => b.id === id);
               if (!bot) return;
-
-              // Telegram and Discord connect instantly — no QR modal
-              if (bot.platform === 'telegram' || bot.platform === 'discord') {
-                try {
-                  const res = await botApi.startWorkspace(id);
-                  const newStatus: BotStatus = res.sessionInfo.status === 'connected' ? 'connected' : 'starting';
-                  setBots(prev => prev.map(b => b.id === id ? {
-                    ...b,
-                    status: newStatus,
-                    lastConnected: newStatus === 'connected' ? new Date().toISOString() : b.lastConnected,
-                  } : b));
-                  if (newStatus === 'connected') loadBots();
-                } catch (err) {
-                  console.error('Failed to restart:', err);
-                  setBots(prev => prev.map(b => b.id === id ? { ...b, status: 'error' } : b));
-                }
-                return;
-              }
 
               setQrModal({ botId: id, botName: bot.name, qrCode: null, status: 'loading' });
               try {

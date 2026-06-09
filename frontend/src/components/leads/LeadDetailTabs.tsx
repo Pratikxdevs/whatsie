@@ -30,9 +30,7 @@ const TIMELINE_ICONS: Record<string, { icon: typeof MessageSquare; color: string
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  whatsapp: 'WhatsApp', telegram: 'Telegram', discord: 'Discord',
-  messenger: 'Messenger', instagram: 'Instagram', facebook: 'Facebook',
-  ms_teams: 'Teams', twitter: 'Twitter', website: 'Website',
+  whatsapp: 'WhatsApp', website: 'Website',
   referral: 'Referral', manual: 'Manual',
 };
 

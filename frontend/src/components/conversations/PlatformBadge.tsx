@@ -10,12 +10,6 @@ import {
 
 const platformConfig: Record<string, { icon: typeof MessageSquare; color: string; bg: string; label: string }> = {
   whatsapp: { icon: MessageCircle, color: 'text-[#25D366]', bg: 'bg-[#25D366]/15', label: 'WhatsApp' },
-  telegram: { icon: Send, color: 'text-[#0088cc]', bg: 'bg-[#0088cc]/15', label: 'Telegram' },
-  discord: { icon: Hash, color: 'text-[#5865F2]', bg: 'bg-[#5865F2]/15', label: 'Discord' },
-  messenger: { icon: MessageSquare, color: 'text-[#0078FF]', bg: 'bg-[#0078FF]/15', label: 'Messenger' },
-  instagram: { icon: Camera, color: 'text-[#E4405F]', bg: 'bg-[#E4405F]/15', label: 'Instagram' },
-  teams: { icon: Users, color: 'text-[#6264A7]', bg: 'bg-[#6264A7]/15', label: 'MS Teams' },
-  twitter: { icon: AtSign, color: 'text-[#1DA1F2]', bg: 'bg-[#1DA1F2]/15', label: 'Twitter/X' },
 };
 
 interface PlatformBadgeProps {

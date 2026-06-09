@@ -23,12 +23,6 @@ const statusColors: Record<string, string> = {
 
 const platformColors: Record<string, string> = {
   whatsapp: "text-[#25D366]",
-  telegram: "text-[#0088cc]",
-  discord: "text-[#5865F2]",
-  messenger: "text-[#0078FF]",
-  instagram: "text-[#E4405F]",
-  teams: "text-[#6264A7]",
-  twitter: "text-zinc-300",
 };
 
 export function CampaignCard({ campaign }: { campaign: Campaign }) {

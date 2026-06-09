@@ -23,13 +23,6 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 const SOURCE_BADGES: Record<string, { bg: string; text: string; label: string }> = {
   whatsapp: { bg: 'bg-green-500/15', text: 'text-green-400', label: 'WhatsApp' },
-  telegram: { bg: 'bg-blue-500/15', text: 'text-blue-400', label: 'Telegram' },
-  discord: { bg: 'bg-indigo-500/15', text: 'text-indigo-400', label: 'Discord' },
-  messenger: { bg: 'bg-purple-500/15', text: 'text-purple-400', label: 'Messenger' },
-  instagram: { bg: 'bg-pink-500/15', text: 'text-pink-400', label: 'Instagram' },
-  facebook: { bg: 'bg-blue-600/15', text: 'text-blue-400', label: 'Facebook' },
-  ms_teams: { bg: 'bg-cyan-500/15', text: 'text-cyan-400', label: 'Teams' },
-  twitter: { bg: 'bg-sky-500/15', text: 'text-sky-400', label: 'Twitter' },
   website: { bg: 'bg-zinc-500/15', text: 'text-zinc-400', label: 'Website' },
   referral: { bg: 'bg-amber-500/15', text: 'text-amber-400', label: 'Referral' },
   manual: { bg: 'bg-gray-500/15', text: 'text-gray-400', label: 'Manual' },

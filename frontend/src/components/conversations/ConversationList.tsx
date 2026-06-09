@@ -52,8 +52,6 @@ export function ConversationList({ conversations, selectedId, onSelect }: Conver
                 className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${
                   conv.platform === 'whatsapp'
                     ? 'bg-[#25D366]/15 text-[#25D366]'
-                    : conv.platform === 'telegram'
-                    ? 'bg-[#0088cc]/15 text-[#0088cc]'
                     : 'bg-white/10 text-[#909099]'
                 }`}
               >

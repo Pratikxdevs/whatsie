@@ -32,12 +32,6 @@ function getInitials(name: string): string {
 
 const platformColors: Record<string, string> = {
   whatsapp: 'bg-[#25D366]/20 text-[#25D366]',
-  telegram: 'bg-[#0088cc]/20 text-[#0088cc]',
-  discord: 'bg-[#5865F2]/20 text-[#5865F2]',
-  messenger: 'bg-[#0078FF]/20 text-[#0078FF]',
-  instagram: 'bg-[#E4405F]/20 text-[#E4405F]',
-  teams: 'bg-[#6264A7]/20 text-[#6264A7]',
-  twitter: 'bg-[#1DA1F2]/20 text-[#1DA1F2]',
 };
 
 export function ConversationListItem({ conversation, isSelected, onClick }: ConversationListItemProps) {

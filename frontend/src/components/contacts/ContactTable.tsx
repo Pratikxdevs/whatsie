@@ -27,12 +27,6 @@ interface ContactTableProps {
 
 const platformIcons: Record<string, { icon: any; color: string }> = {
   whatsapp: { icon: MessageCircle, color: "text-[#25D366]" },
-  telegram: { icon: Send, color: "text-[#0088cc]" },
-  discord: { icon: Headphones, color: "text-[#5865F2]" },
-  messenger: { icon: MessageSquare, color: "text-[#0078FF]" },
-  instagram: { icon: Camera, color: "text-[#E4405F]" },
-  teams: { icon: Users, color: "text-[#6264A7]" },
-  twitter: { icon: Bird, color: "text-[#1DA1F2]" },
 };
 
 const statusColors: Record<string, string> = {

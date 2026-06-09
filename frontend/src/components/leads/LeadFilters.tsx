@@ -11,18 +11,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const SOURCES = [
-  'whatsapp', 'telegram', 'discord', 'messenger', 'instagram',
-  'facebook', 'ms_teams', 'twitter', 'website', 'referral', 'manual',
+  'whatsapp', 'website', 'referral', 'manual',
 ] as const;
 const SOURCE_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
-  telegram: 'Telegram',
-  discord: 'Discord',
-  messenger: 'Messenger',
-  instagram: 'Instagram',
-  facebook: 'Facebook',
-  ms_teams: 'Teams',
-  twitter: 'Twitter',
   website: 'Website',
   referral: 'Referral',
   manual: 'Manual',

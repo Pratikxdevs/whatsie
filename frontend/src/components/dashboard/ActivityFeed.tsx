@@ -36,8 +36,6 @@ const COLORS = {
 
 const PLATFORM_COLORS: Record<string, string> = {
   whatsapp: "#25D366",
-  telegram: "#26A5E4",
-  discord: "#5865F2",
 };
 
 export function ActivityFeed() {

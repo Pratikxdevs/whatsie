@@ -3,12 +3,6 @@ import { botApi, type Workspace } from "../../services/api";
 
 const PLATFORM_COLORS: Record<string, string> = {
   whatsapp: "#25D366",
-  telegram: "#26A5E4",
-  discord: "#5865F2",
-  messenger: "#0084FF",
-  instagram: "#E4405F",
-  teams: "#6264A7",
-  twitter: "#1DA1F2",
 };
 
 export function BotHealthGrid() {

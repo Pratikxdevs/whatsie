@@ -10,7 +10,7 @@ import { PlusIcon } from "@heroicons/react/24/outline";
 import { Upload, Search, Filter } from "lucide-react";
 import { toast } from "sonner";
 
-const allPlatforms = ["whatsapp", "telegram", "discord", "messenger", "instagram", "teams", "twitter"];
+const allPlatforms = ["whatsapp"];
 
 export function ContactsPage() {
   const navigate = useNavigate();

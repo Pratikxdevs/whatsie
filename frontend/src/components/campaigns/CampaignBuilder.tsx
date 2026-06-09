@@ -54,12 +54,6 @@ export function CampaignBuilder({ onClose }: CampaignBuilderProps) {
                 className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-green-500/50"
               >
                 <option value="whatsapp">WhatsApp</option>
-                <option value="telegram">Telegram</option>
-                <option value="discord">Discord</option>
-                <option value="messenger">Messenger</option>
-                <option value="instagram">Instagram</option>
-                <option value="teams">MS Teams</option>
-                <option value="twitter">Twitter/X</option>
               </select>
             </div>
             <div>

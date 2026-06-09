@@ -12,7 +12,7 @@ interface AddLeadModalProps {
   botOptions: Array<{ id: string; name: string }>;
 }
 
-const SOURCES = ['whatsapp', 'telegram', 'discord', 'messenger', 'instagram', 'ms_teams', 'twitter', 'website', 'referral', 'manual'] as const;
+const SOURCES = ['whatsapp', 'website', 'referral', 'manual'] as const;
 const STATUSES = ['new', 'contacted', 'qualified', 'converted', 'lost'] as const;
 
 export function AddLeadModal({ isOpen, onClose, onSave, botOptions }: AddLeadModalProps) {

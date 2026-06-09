@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const botFormSchema = z.object({
   name: z.string().min(1, 'Bot name is required').max(100),
-  platform: z.enum(['whatsapp', 'telegram', 'discord', 'twitter'], {
+  platform: z.enum(['whatsapp'], {
     message: 'Select a platform',
   }),
   system_prompt: z.string().max(10000).optional(),
