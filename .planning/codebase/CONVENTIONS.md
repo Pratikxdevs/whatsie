@@ -1,58 +1,288 @@
----
-title: Code Conventions
-last_mapped_commit: f683cc9578043d8141583bd2d2d84c7ebcaea9d4
-last_updated: 2026-06-09
----
+# CrmV2 — Code Conventions & Patterns
 
-# Code Conventions
+## TypeScript Configuration
 
-## Code Style
-- TypeScript with `strict: true`, targeting ES2022, CommonJS modules
-- 2-space indentation, semicolons, single quotes
-- No ESLint or Prettier config in the backend root (only `platforms/evolution-api/` has its own `.eslintrc.js` and `.prettierrc.js`)
-- Lint step in CI is `npx tsc --noEmit` (typecheck only, no dedicated linter)
-- Express 5, Prisma ORM, Zod for validation
-- Pino for structured logging; Sentry for error tracking
-- `module-alias` used for path aliasing (configured in package.json)
-- Comments are sparse; JSDoc used selectively on exported functions and complex logic (e.g., middleware strategies, error code registry)
+- **Strict mode** enabled (`"strict": true` in tsconfig.json)
+- Target: ES2022, Module: CommonJS
+- Root dir: `./src`, output: `./dist`
+- `esModuleInterop: true`, `forceConsistentCasingInFileNames: true`
+- `skipLibCheck: true`, `resolveJsonModule: true`
+- Test files excluded from compilation: `src/**/*.test.ts`, `src/__tests__/**`
+- No ESLint or Prettier config files present — formatting is manual/convention-based
+
+## Import & Export Patterns
+
+- **Named exports** for utilities, constants, types, and functions
+- **Default exports** only for Express routers (`export default router`)
+- **Barrel exports** via `src/schemas/index.ts` re-exporting all schemas and types
+- Named type exports co-located with their schema: `export type CreateLeadInput = z.infer<typeof createLeadSchema>`
+
+### Import Order (observed convention, not enforced)
+
+1. Node built-ins (`import express from 'express'`, `import crypto from 'crypto'`)
+2. Third-party libraries (`import jwt from 'jsonwebtoken'`, `import { z } from 'zod'`)
+3. Local modules relative to current file (`../db/prisma`, `../config/logger`)
+4. Type-only imports where applicable (`import type { Request } from 'express'`)
+
+### Import Style
+
+- `import x from 'y'` for default exports
+- `import { x, y } from 'z'` for named exports
+- `import * as X from 'y'` rarely (e.g., `import * as Sentry from '@sentry/node'`)
+- Dynamic `await import()` for lazy-loaded modules (e.g., providers, adapters)
+
+## Module Organization
+
+```
+src/
+├── adapters/        # Platform adapters (Evolution API, Discord, etc.)
+├── ai/              # AI provider integrations
+├── AiInteg/         # AI bridge endpoints
+├── api/             # Auth API (Clerk integration)
+├── billing/         # Usage recording, quota tracking
+├── config/          # Logger configuration
+├── crm/             # CRM domain logic
+├── db/              # Prisma client singleton
+├── debug/           # Debug server, log ring buffer
+├── errors/          # Error code registry
+├── metrics/         # Prometheus counters/histograms
+├── middleware/       # Express middleware (auth, validate, tenant, quota, rateLimit)
+├── normalizer/      # Platform-specific webhook normalization
+├── platforms/       # Platform abstractions
+├── queue/           # BullMQ queue setup
+├── rateLimiter/     # Rate limiting utilities
+├── router/          # Legacy router
+├── routes/          # Express route handlers (one file per domain)
+├── schemas/         # Zod validation schemas (organized by domain subdirectories)
+├── services/        # Business logic services (class-based, static methods)
+├── utils/           # Pure utility functions
+└── workers/         # BullMQ background workers
+```
 
 ## Naming Conventions
-- **Files:** `camelCase.ts` for source files; `kebab-case` for test files (e.g., `leads-api.test.ts`, `tenant-isolation.test.ts`)
-- **Directories:** `camelCase` (e.g., `AiInteg/`, `rateLimiter/`); some use `PascalCase` for adapter/service folders
-- **Functions:** `camelCase` — route handlers, middleware factories, utility functions (e.g., `validateBody`, `authenticateToken`, `createAppError`)
-- **Classes:** `PascalCase` (e.g., `IntentClassifier`, `TwitterSyncManager`)
-- **Interfaces/Types:** `PascalCase` suffixed with descriptive noun (e.g., `AuthenticatedRequest`, `IntentResult`, `ErrorCode`)
-- **Constants:** `UPPER_SNAKE_CASE` for env vars and error codes (e.g., `DEV_AUTH_BYPASS`, `API_001`); `camelCase` for exported singletons (e.g., `logger`, `prisma`, `tenantContext`)
-- **Route files:** Export a default `Router` instance; named after the resource (e.g., `leads.ts`, `conversations.ts`)
-- **Schema files:** Organized in subdirectories per domain (`schemas/leads/create.ts`), export a Zod schema + inferred TypeScript type
 
-## Patterns
-- **Multi-strategy auth middleware:** `authenticateToken` supports dev bypass, API key header, Clerk JWT, and standard Bearer JWT in a single middleware
-- **Tenant isolation:** `AsyncLocalStorage` for tenant context (`tenantContext`); Prisma queries scoped by `tenantId` on every request
-- **Zod validation middleware:** Generic `validateBody`, `validateQuery`, `validateParams` factories wrap Zod `safeParse`; attach parsed/stripped data to `req.body`
-- **Structured error codes:** Centralized `ErrorCode` registry with `{DOMAIN}_{NUMBER}` format (e.g., `WA_001`, `DB_003`); `createAppError()` factory returns structured error objects
-- **Adapter pattern:** Platform adapters (`evolutionApi`, `telegramAdapter`, `twitterApi`, `discordAdapter`) abstract external API communication
-- **Queue-based async processing:** BullMQ queues (`discordMessagesQueue`, etc.) for message dispatch; workers spawned in background
-- **Normalization layer:** `src/normalizer/` converts platform-specific webhook payloads into a unified message format
-- **Service layer:** Domain services (`intentClassifier`, `ruleEngine`, `sessionManager`, `workflowEngine`) contain business logic separate from routes
-- **Graceful shutdown:** Explicit `SIGTERM`/`SIGINT` handlers that close HTTP server, Prisma, and Redis connections
-- **PII redaction in logs:** Logger automatically redacts phone numbers, emails, and API keys from log output
-- **Request lifecycle middleware:** Request ID injection, request duration metrics (Prometheus), request logging to both Pino and debug server ring buffer
+### Files
 
-## Error Handling
-- Route handlers wrap logic in `try/catch`, log with `logger.error({ err }, 'context message')`, return structured JSON via `createAppError()`
-- HTTP status codes mapped semantically: 400 (validation), 401 (auth required), 403 (forbidden), 404 (not found), 500 (internal error)
-- `createAppError(code, detail?, meta?)` returns `{ code, message, detail, meta, timestamp }` — consumer-facing error format
-- Zod validation errors formatted as `{ field, message }` array in the `meta.errors` field
-- Prisma errors handled at the route level (not globally); unique constraint violations and FK violations mapped to appropriate error codes
-- External service failures (Evolution API, Telegram, Discord, Twitter) are caught and logged; DB status is preserved rather than crashing
-- Sentry integration is optional (only when `SENTRY_DSN` is set); positioned after all route registrations
-- Missing env vars cause an immediate `logger.fatal` + `process.exit(1)` at startup
-- Port-in-use conflicts trigger automatic retry on next port (up to PORT+10)
+- **kebab-case** for all files: `leads.ts`, `workflowEngine.ts`, `tenant-isolation.test.ts`
+- Test files: `*.test.ts` or `*.spec.ts`
+- Schema subdirectories: `schemas/auth/`, `schemas/leads/`, `schemas/bots/`
 
-## Import Organization
-- Third-party imports first (`express`, `jsonwebtoken`, `zod`, etc.)
-- Internal imports next, grouped by layer: `../db/prisma`, `../config/logger`, `../middleware/*`, `../schemas/*`, `../errors/codes`
-- Relative paths used exclusively (no path aliases in practice despite `module-alias` in dependencies)
-- Dynamic `import()` used for startup-heavy modules (platform adapters) to avoid blocking startup
-- Test files import from `vitest` first, then source modules, then `../__tests__/setup` and `../__tests__/helpers`
+### Functions & Variables
+
+- **camelCase** for functions and variables: `authenticateToken`, `validateBody`, `createAppError`
+- **PascalCase** for classes: `WorkflowEngine`, `SessionManager`
+- **PascalCase** for interfaces/types: `AuthenticatedRequest`, `WorkflowResponse`, `NormalizedMessage`
+- **UPPER_SNAKE_CASE** for constants: `PLAN_LIMITS`, `PHONE_RE`, `EMAIL_RE`, `DEV_TENANT_ID`
+- **camelCase** for Prisma exports: `prisma` (singleton instance)
+
+### Route Files
+
+- File names match their domain: `leads.ts`, `conversations.ts`, `billing.ts`
+- Router variable is always `const router = Router()`
+- Default export: `export default router`
+
+### Schema Files
+
+- Organized in domain subdirectories: `schemas/leads/create.ts`, `schemas/auth/login.ts`
+- Schema variable naming: `createLeadSchema`, `updateLeadSchema`, `loginSchema`
+- Type export: `export type CreateLeadInput = z.infer<typeof createLeadSchema>`
+- Barrel re-export in `schemas/index.ts`
+
+## Express Route Patterns
+
+### Standard Route Structure
+
+```typescript
+import { Router } from 'express';
+import { prisma } from '../db/prisma';
+import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../config/logger';
+import { validateBody } from '../middleware/validate';
+import { createAppError, ErrorCode } from '../errors/codes';
+
+const router = Router();
+
+// Apply auth to all routes
+router.use(authenticateToken);
+
+// CRUD routes with try/catch, structured errors, and logger context
+router.get('/', async (req, res) => {
+  try {
+    const tenantId = (req as AuthenticatedRequest).user!.tenantId;
+    // ... Prisma query ...
+    return res.json({ data });
+  } catch (err: any) {
+    logger.error({ err }, 'Description of failure');
+    return res.status(500).json(createAppError(ErrorCode.SYS_003, 'Internal Server Error'));
+  }
+});
+
+export default router;
+```
+
+### Key Patterns
+
+- **Tenant scoping**: Every query includes `tenantId` from `req.user!.tenantId`
+- **Try/catch wrapping**: All async route handlers wrapped with structured error logging
+- **Validation middleware**: `validateBody(schema)` applied per-route, not globally
+- **Error responses**: Use `createAppError(ErrorCode.XXX, 'detail')` for consistent error shape
+- **Auth applied per-router**: `router.use(authenticateToken)` at top of router, not per-route
+
+### Route Mounting (src/index.ts)
+
+- Routes mounted with path prefix: `app.use('/api/leads', leadsRouter)`
+- Rate limiters applied at mount point: `app.use('/api', apiRateLimiter)`
+- Webhook routes unauthenticated: `app.use('/api/webhooks', webhookRouter)`
+
+## Middleware Patterns
+
+### Validation Middleware (`validate.ts`)
+
+- Factory functions: `validateBody(schema)`, `validateQuery(schema)`, `validateParams(schema)`
+- Uses `schema.safeParse()` (not `.parse()`) to avoid throwing
+- Attaches parsed/stripped data back to `req.body`/`req.query`/`req.params`
+- Returns 400 with `createAppError(ErrorCode.API_004, 'Validation failed', { errors })`
+
+### Authentication Middleware (`auth.ts`)
+
+- `authenticateToken` — dual-mode: supports API key (X-API-KEY header), Bearer JWT, and Clerk JWT
+- Extends Express Request: `interface AuthenticatedRequest extends Request { user?: { id, tenantId, role } }`
+- Dev bypass via `DEV_AUTH_BYPASS=true` environment variable
+- API keys hashed with SHA-256 before database lookup
+
+### Tenant Middleware (`tenant.ts`)
+
+- Uses `AsyncLocalStorage` for request-scoped tenant context
+- `tenantContext.run({ tenantId }, () => next())` pattern
+- Consumed by Prisma extension to set PostgreSQL RLS context
+
+### Error Response Shape
+
+All errors follow the structure defined in `errors/codes.ts`:
+
+```typescript
+{
+  code: 'AUTH_001',           // Domain error code
+  message: 'Description...',  // Human-readable from ERROR_DESCRIPTIONS
+  detail: 'Optional extra',   // Context-specific detail
+  meta: { ... },              // Optional metadata
+  timestamp: '2026-01-01T00:00:00.000Z'
+}
+```
+
+## Prisma Usage Patterns
+
+### Client Singleton (`db/prisma.ts`)
+
+- Global singleton with hot-reload guard: `globalThis.__prisma ?? new PrismaClient()`
+- Only stores on global in non-production to prevent connection pool exhaustion
+
+### RLS Integration
+
+- Extended PrismaClient sets `app.current_tenant_id` via `set_config()` before every query
+- Uses `AsyncLocalStorage` from `tenantContext` to get current tenant
+- `set_config('app.current_tenant_id', tenantId, true)` — local to transaction, connection-pool safe
+
+### Query Patterns
+
+- Always include `tenantId` in `where` clauses (defense-in-depth, RLS is primary)
+- Use `findMany` with `include` for nested relations
+- Use `findFirst` for single-record lookups
+- Pagination: `skip`/`take` with `count` for total
+- Transactions via `$transaction` callback
+
+## Error Handling Patterns
+
+### Structured Error Codes
+
+- Format: `{DOMAIN}_{NUMBER}` (e.g., `AUTH_001`, `DB_003`, `WA_004`)
+- Domains: API, DB, AUTH, WA (WhatsApp), TG (Telegram), TW (Twitter), Q (Queue), WS (WebSocket), SYS (System)
+- Registry in `errors/codes.ts` with descriptions and factory function
+
+### Route-Level Error Handling
+
+```typescript
+catch (err: any) {
+  logger.error({ err }, 'Contextual description');
+  return res.status(500).json(createAppError(ErrorCode.SYS_003, 'Internal Server Error'));
+}
+```
+
+- Never expose raw error messages to clients
+- Log full error object with structured context
+- Return generic error codes to client
+
+### Non-Blocking Error Patterns
+
+- Quota check failures are swallowed (allow request to proceed)
+- Billing usage recording errors are swallowed (don't block user operations)
+- Startup sync failures are caught and logged as warnings
+
+## Logging Approach (Pino)
+
+### Configuration (`config/logger.ts`)
+
+- Pino with `pino-pretty` transport in development (colorized, timestamped)
+- Production: plain JSON logs to stdout
+- Log level: `LOG_LEVEL` env var, defaults to `info`
+- ISO timestamps via `pino.stdTimeFunctions.isoTime`
+
+### PII Redaction
+
+- Automatic redaction of phone numbers, email addresses, and API keys
+- Object key inspection: keys containing `key`, `secret`, or `token` get first 4 chars + `****`
+- `redactObject()` applied to logger child context
+
+### Context Logging
+
+- `getContextLogger(tenantId, module, context)` — creates child logger with tenant + module context
+- Structured log objects: `logger.error({ err, tenantId }, 'message')`
+- Debug server integration via `setDebugLogger()` for real-time log streaming
+
+## Environment Variable Management
+
+### Validation (`utils/env.ts`)
+
+- Zod schema validates all env vars at startup
+- Required: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` (min 32 chars), `GATEWAY_SECURITY_TOKEN`, `EVOLUTION_API_*`
+- Optional with format validation: `FRONTEND_URL`, `SENTRY_DSN`, `DEFAULT_TENANT_ID`, `DEV_AUTH_BYPASS`, `NODE_ENV`
+- Fail-fast: throws with detailed error messages if validation fails
+
+### Startup Validation (`index.ts`)
+
+- `requiredEnvs` array checked before anything else
+- `process.exit(1)` with `logger.fatal()` on missing envs
+- Prisma migrations auto-run on startup (`prisma migrate deploy`)
+
+## Metrics & Observability
+
+### Prometheus (`metrics/index.ts`)
+
+- Custom registry (not default) for metrics isolation
+- Default metrics: process, GC, event loop
+- Counters: `messages_received_total`, `messages_sent_total`, `errors_total`
+- Histograms: `http_request_duration_seconds` (with route/method/status labels)
+- Gauges: `queue_depth`
+- `/metrics` endpoint in `index.ts`
+
+### Sentry Integration
+
+- Conditional init: only if `SENTRY_DSN` env var is set
+- 10% trace sample rate
+- Express error handler via `Sentry.setupExpressErrorHandler(app)`
+
+## Security Patterns
+
+- Helmet with custom CSP directives
+- CORS: explicit allowlist for dev origins, configurable in production
+- HMAC SHA-256 webhook signature verification for WhatsApp
+- API keys stored as SHA-256 hashes, never plaintext
+- Rate limiting: Redis-backed with separate auth (5/15min) and API (100/min) limiters
+- Content sanitization via `dompurify` (dependency present)
+
+## Service Layer Patterns
+
+- Services are **classes with static methods** (not instantiated): `WorkflowEngine.checkTrigger()`
+- Interfaces defined for return types: `WorkflowResponse`
+- Services import Prisma directly, no dependency injection
+- Business logic in services, not in route handlers
