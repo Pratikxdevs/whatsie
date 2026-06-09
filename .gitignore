@@ -29,3 +29,10 @@ Thumbs.db
 
 # Testing
 coverage/
+
+# Secrets
+apikeys.txt
+
+# Embedded repos
+platforms/evolution-api/
+whatsie/
