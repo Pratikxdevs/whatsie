@@ -55,7 +55,7 @@ export function BillingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-200 font-sans selection:bg-white/10 overflow-x-hidden">
+    <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-white/10 overflow-x-hidden">
       {/* Hero */}
       <div className="relative w-full h-[280px] md:h-[320px] overflow-hidden flex flex-col border-b border-white/5">
         <div className="absolute inset-0 w-full h-full bg-no-repeat bg-cover bg-center opacity-30 mix-blend-screen" style={{ backgroundImage: `url('${heroBg}')` }} />
@@ -101,7 +101,7 @@ export function BillingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             {loading
               ? Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="bg-[#0f0f11] rounded-lg border border-white/5 p-4 h-24 animate-pulse" />
+                  <div key={i} className="bg-zinc-900/50 rounded-lg border border-white/5 p-4 h-24 animate-pulse" />
                 ))
               : usageMeters.map((meter) => (
                   <UsageMeter key={meter.label} {...meter} />
@@ -118,7 +118,7 @@ export function BillingPage() {
             <span className="w-2 h-2 bg-purple-500 rounded-full" />
             Invoice History
           </h2>
-          <div className="bg-[#0f0f11] rounded-lg border border-white/5 overflow-hidden">
+          <div className="bg-zinc-900/50 rounded-lg border border-white/5 overflow-hidden">
             <InvoiceTable />
           </div>
         </section>

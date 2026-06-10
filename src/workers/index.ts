@@ -73,8 +73,28 @@ async function callAiFallback(msg: NormalizedMessage, dbRecords: any) {
 
   addLog('info', `[AI] Calling AI for user=${msg.userId} tenant=${msg.tenantId}`, 'AI_CALL');
 
-  const aiText = await generateAiResponse(msg.tenantId, msg.userId, msg.message.text || '[empty]');
-  log.info({ userId: msg.userId }, 'AI response generated');
+  const aiTextRaw = await generateAiResponse(msg.tenantId, msg.userId, msg.message.text || '[empty]');
+  
+  const isLead = aiTextRaw.includes('|||LEAD_QUALIFIED|||');
+  const aiText = aiTextRaw.replace('|||LEAD_QUALIFIED|||', '').replace("'|||LEAD_QUALIFIED|||'", '').trim();
+
+  log.info({ userId: msg.userId, isLead }, 'AI response generated');
+
+  if (isLead) {
+    await prisma.lead.update({
+      where: { id: dbRecords.lead.id },
+      data: { status: 'qualified' }
+    });
+    await logEvent(msg.tenantId, dbRecords.lead.id, 'lead_qualified', {
+      platform: msg.platform,
+    });
+  } else {
+    // Set to contacted if we are actually texting them but they aren't a qualified lead
+    await prisma.lead.update({
+      where: { id: dbRecords.lead.id },
+      data: { status: 'contacted' }
+    });
+  }
 
   addLog('info', `[AI] Response generated: "${aiText.slice(0, 60)}..."`, 'AI_RESPONSE');
 

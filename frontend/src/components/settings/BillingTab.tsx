@@ -13,7 +13,7 @@ export function BillingTab() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Current Plan</p>
-            <p className="text-2xl font-bold text-white mt-1">Professional</p>
+            <p className="text-2xl font-bold text-white mt-1">Free</p>
           </div>
           <button className="flex items-center gap-1.5 px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-semibold text-sm rounded-xl transition-all">
             Upgrade
@@ -23,15 +23,15 @@ export function BillingTab() {
         <div className="grid grid-cols-3 gap-4">
           <div>
             <p className="text-xs text-zinc-500 mb-1">Messages/mo</p>
-            <p className="text-lg font-semibold text-white">5,000</p>
+            <p className="text-lg font-semibold text-white">500</p>
           </div>
           <div>
             <p className="text-xs text-zinc-500 mb-1">AI Tokens/mo</p>
-            <p className="text-lg font-semibold text-white">100,000</p>
+            <p className="text-lg font-semibold text-white">10,000</p>
           </div>
           <div>
             <p className="text-xs text-zinc-500 mb-1">Team Members</p>
-            <p className="text-lg font-semibold text-white">Unlimited</p>
+            <p className="text-lg font-semibold text-white">3</p>
           </div>
         </div>
       </div>
@@ -40,9 +40,9 @@ export function BillingTab() {
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">This Month's Usage</h3>
         {[
-          { label: "Messages", used: 2847, total: 5000, unit: "" },
-          { label: "AI Tokens", used: 67420, total: 100000, unit: "" },
-          { label: "Storage", used: 1.2, total: 5, unit: "GB" },
+          { label: "Messages Sent", used: 127, total: 500, unit: "" },
+          { label: "Messages Received", used: 98, total: 500, unit: "" },
+          { label: "AI Tokens Used", used: 3420, total: 10000, unit: "" },
         ].map((meter) => {
           const pct = Math.round((meter.used / meter.total) * 100);
           return (
@@ -65,26 +65,26 @@ export function BillingTab() {
         })}
       </div>
 
-      {/* Invoices */}
+      {/* AI Usage Logs */}
       <div>
-        <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Recent Invoices</h3>
+        <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Recent AI Activity</h3>
         <div className="space-y-2">
           {[
-            { date: "May 1, 2026", amount: "$299.00", status: "paid" },
-            { date: "Apr 1, 2026", amount: "$299.00", status: "paid" },
-            { date: "Mar 1, 2026", amount: "$299.00", status: "paid" },
-          ].map((inv, i) => (
+            { time: "2 min ago", action: "Lead qualification", tokens: 342, model: "Groq Llama 3.1 70B" },
+            { time: "18 min ago", action: "Conversation summary", tokens: 128, model: "Groq Llama 3.1 70B" },
+            { time: "1 hr ago", action: "Lead qualification", tokens: 567, model: "Groq Llama 3.1 70B" },
+          ].map((log, i) => (
             <div key={i} className="flex items-center justify-between p-3 bg-zinc-900 border border-white/5 rounded-lg">
               <div className="flex items-center gap-3">
                 <CreditCard className="w-4 h-4 text-zinc-500" />
-                <span className="text-sm text-zinc-300">{inv.date}</span>
+                <div>
+                  <span className="text-sm text-zinc-300">{log.action}</span>
+                  <span className="text-xs text-zinc-600 ml-2">{log.model}</span>
+                </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-white">{inv.amount}</span>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-green-500/10 text-green-400 rounded uppercase">
-                  {inv.status}
-                </span>
-                <button className="text-xs text-zinc-500 hover:text-white transition-colors">Download</button>
+                <span className="text-sm text-zinc-400">{log.tokens} tokens</span>
+                <span className="text-xs text-zinc-600">{log.time}</span>
               </div>
             </div>
           ))}

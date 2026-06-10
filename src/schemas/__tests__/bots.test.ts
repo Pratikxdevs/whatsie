@@ -30,7 +30,7 @@ describe("bot schemas", () => {
     it("accepts optional config fields", () => {
       const result = createBotSchema.safeParse({
         name: "My Bot",
-        platform: "telegram",
+        platform: "whatsapp",
         system_prompt: "You are helpful",
         temperature: 0.7,
       });

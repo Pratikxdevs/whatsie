@@ -3,7 +3,8 @@ import { X, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import { io as ioClient, Socket } from 'socket.io-client';
 import type { AiEngine } from './types';
 import { ProviderAuth } from '../ProviderAuth';
-import { botApi, getSocketUrl } from '../../services/api';
+import { botApi, getSocketUrl, getSocketAuthToken } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 type Step = 'config' | 'connect';
 
@@ -12,6 +13,7 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
   onClose: () => void;
   onComplete: () => void;
 }) {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('config');
   const [name, setName] = useState('');
   const [aiEngine, setAiEngine] = useState<AiEngine>('groq');
@@ -34,20 +36,24 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
 
   // Socket.IO — listen for real-time bot_status_change events
   useEffect(() => {
-    if (!createdBotId || connectStatus === 'idle' || connectStatus === 'connected' || connectStatus === 'error') return;
+    if (!createdBotId || !user?.tenantId || connectStatus === 'idle' || connectStatus === 'connected' || connectStatus === 'error') return;
 
-    const socket: Socket = ioClient(getSocketUrl());
-    socket.emit('join_tenant', 'default');
-    socket.on('bot_status_change', ({ botId, status }: { botId: string; status: string }) => {
-      if (botId === createdBotId && status === 'connected') {
-        cleanupTimers();
-        setConnectStatus('connected');
-        onComplete();
-      }
-    });
-
-    return () => { socket.disconnect(); };
-  }, [createdBotId, connectStatus, onComplete]);
+    let cancelled = false;
+    (async () => {
+      const token = await getSocketAuthToken();
+      if (cancelled) return;
+      const socket: Socket = ioClient(getSocketUrl(), { auth: { token } });
+      socket.on('bot_status_change', ({ botId, status }: { botId: string; status: string }) => {
+        if (botId === createdBotId && status === 'connected') {
+          cleanupTimers();
+          setConnectStatus('connected');
+          onComplete();
+        }
+      });
+      return () => { socket.disconnect(); };
+    })();
+    return () => { cancelled = true; };
+  }, [createdBotId, connectStatus, onComplete, user?.tenantId]);
 
   if (!isOpen) return null;
 

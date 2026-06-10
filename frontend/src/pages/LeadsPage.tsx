@@ -195,7 +195,7 @@ export function LeadsPage() {
   }, [selectedIds]);
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-200 font-sans selection:bg-white/10 overflow-x-hidden">
+    <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-white/10 overflow-x-hidden">
       {/* Hero Section */}
       <div className="relative w-full h-[280px] md:h-[320px] overflow-hidden flex flex-col border-b border-white/5">
         <div
@@ -241,21 +241,21 @@ export function LeadsPage() {
             <LeadExportButton leads={filteredLeads} />
             <button
               onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#7D7D8A] hover:text-[#CCCCD4] border border-white/5 hover:border-white/10 transition-colors"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-300 border border-white/5 hover:border-white/10 transition-colors"
             >
               <Upload className="w-4 h-4" />
               Import
             </button>
-            <div className="flex items-center bg-[#141415] rounded-lg p-0.5 border border-white/5">
+            <div className="flex items-center bg-zinc-900 rounded-lg p-0.5 border border-white/5">
               <button
                 onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-[#1f1f22] text-[#EBEBF0]' : 'text-[#7D7D8A] hover:text-[#CCCCD4]'}`}
+                className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-[#1f1f22] text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
                 <List className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('kanban')}
-                className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-[#1f1f22] text-[#EBEBF0]' : 'text-[#7D7D8A] hover:text-[#CCCCD4]'}`}
+                className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-[#1f1f22] text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
@@ -265,11 +265,11 @@ export function LeadsPage() {
 
         {/* Count */}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-[#7D7D8A]">
+          <span className="text-sm text-zinc-500">
             {filteredLeads.length} lead{filteredLeads.length !== 1 ? 's' : ''}
           </span>
           {filters.statuses.length > 0 || filters.sources.length > 0 || filters.botId ? (
-            <span className="text-xs text-[#7D7D8A]">(filtered)</span>
+            <span className="text-xs text-zinc-500">(filtered)</span>
           ) : null}
         </div>
 
@@ -286,7 +286,7 @@ export function LeadsPage() {
             <div className="w-6 h-6 border-2 border-zinc-600 border-t-zinc-200 rounded-full animate-spin" />
           </div>
         ) : viewMode === 'table' ? (
-          <div className="bg-[#0f0f11] border border-white/5 rounded-xl overflow-hidden">
+          <div className="bg-zinc-900/50 border border-white/5 rounded-xl overflow-hidden">
             <LeadTable
               leads={filteredLeads}
               selectedIds={selectedIds}

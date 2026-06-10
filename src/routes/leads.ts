@@ -24,6 +24,9 @@ router.get('/', async (req, res) => {
     const where: any = { tenantId };
     if (status && typeof status === 'string') {
       where.status = status;
+    } else {
+      // By default, exclude 'new' leads (only show those our AI has texted/qualified)
+      where.status = { not: 'new' };
     }
     if (platform && typeof platform === 'string') {
       where.source = platform;

@@ -5,9 +5,15 @@ const IV_LENGTH = 12;
 const SALT_LENGTH = 16;
 const TAG_LENGTH = 16;
 
-function getKey(): Buffer {
-  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY || process.env.JWT_SECRET || 'fallback-dev-key-change-in-prod';
-  const salt = randomBytes(SALT_LENGTH); // In production, store per-record salt
+function getEncryptionKey(): string {
+  const key = process.env.CREDENTIAL_ENCRYPTION_KEY;
+  if (!key) {
+    throw new Error('CREDENTIAL_ENCRYPTION_KEY is not set. It is required for AES-256-GCM encryption.');
+  }
+  return key;
+}
+
+function deriveKey(secret: string, salt: Buffer): Buffer {
   return scryptSync(secret, salt, 32);
 }
 
@@ -16,8 +22,9 @@ function getKey(): Buffer {
  * Returns: base64(salt:iv:tag:ciphertext)
  */
 export function encryptCredential(plaintext: string): string {
+  const secret = getEncryptionKey();
   const salt = randomBytes(SALT_LENGTH);
-  const key = scryptSync(process.env.CREDENTIAL_ENCRYPTION_KEY || process.env.JWT_SECRET || 'fallback-dev-key-change-in-prod', salt, 32);
+  const key = deriveKey(secret, salt);
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
 
@@ -35,6 +42,7 @@ export function encryptCredential(plaintext: string): string {
  * Input: base64(salt:iv:tag:ciphertext)
  */
 export function decryptCredential(encrypted: string): string {
+  const secret = getEncryptionKey();
   const buf = Buffer.from(encrypted, 'base64');
 
   const salt = buf.subarray(0, SALT_LENGTH);
@@ -42,7 +50,7 @@ export function decryptCredential(encrypted: string): string {
   const tag = buf.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
   const ciphertext = buf.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
 
-  const key = scryptSync(process.env.CREDENTIAL_ENCRYPTION_KEY || process.env.JWT_SECRET || 'fallback-dev-key-change-in-prod', salt, 32);
+  const key = deriveKey(secret, salt);
   const decipher = createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);
 

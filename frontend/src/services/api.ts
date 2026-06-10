@@ -39,6 +39,15 @@ api.interceptors.request.use(authInterceptor);
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const status = error?.response?.status;
+    if (status === 401 || status === 403) {
+      import('sonner').then(({ toast }) => {
+        toast.error('Add Bot: You need a connected bot or valid session to perform this action.');
+      });
+      if (window.location.pathname !== '/bots') {
+        window.location.href = '/bots';
+      }
+    }
     const endpoint = error?.config?.url || 'unknown';
     errorLog.logApiError(error, endpoint);
     return Promise.reject(error);
@@ -181,12 +190,10 @@ export const conversationApi = {
   },
 
   sendMedia: async (conversationId: string, file: File, messageType: string) => {
-    // Convert file to base64
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // Strip the data URL prefix (e.g. "data:image/png;base64,")
         const base64Data = result.split(',')[1] || result;
         resolve(base64Data);
       };
@@ -201,6 +208,52 @@ export const conversationApi = {
       mimeType: file.type,
     });
     return res.data.message ?? res.data;
+  },
+
+  // --- Evolution API (WhatsApp) ---
+
+  getChats: async (): Promise<any[]> => {
+    const res = await api.get('/whatsapp/chats');
+    return res.data.chats ?? [];
+  },
+
+  searchContacts: async (query?: string): Promise<any[]> => {
+    const params = query ? { q: query } : {};
+    const res = await api.get('/whatsapp/contacts', { params });
+    return res.data.contacts ?? [];
+  },
+
+  getChatMessages: async (jid: string, page?: number, offset?: number): Promise<any[]> => {
+    const params: any = {};
+    if (page) params.page = page;
+    if (offset) params.offset = offset;
+    const res = await api.get(`/whatsapp/messages/${encodeURIComponent(jid)}`, { params });
+    return res.data.messages ?? [];
+  },
+
+  markAsRead: async (messages: Array<{ remoteJid: string; fromMe: boolean; id: string }>): Promise<void> => {
+    await api.post('/whatsapp/read', { messages });
+  },
+
+  sendTyping: async (number: string, presence: 'composing' | 'recording' | 'paused' = 'composing'): Promise<void> => {
+    await api.post('/whatsapp/typing', { number, presence });
+  },
+
+  getProfilePicture: async (jid: string): Promise<string | null> => {
+    const res = await api.get(`/whatsapp/profile/${encodeURIComponent(jid)}`);
+    return res.data.pictureUrl ?? null;
+  },
+
+  blockContact: async (number: string, status: 'block' | 'unblock'): Promise<void> => {
+    await api.post('/whatsapp/block', { number, status });
+  },
+
+  archiveChat: async (lastMessage: any, chat: string, archive: boolean): Promise<void> => {
+    await api.post('/whatsapp/archive', { lastMessage, chat, archive });
+  },
+
+  deleteMessage: async (id: string, remoteJid: string, fromMe: boolean): Promise<void> => {
+    await api.delete('/whatsapp/message', { data: { id, remoteJid, fromMe } });
   },
 };
 
@@ -276,44 +329,24 @@ export function getSocketUrl(): string {
   return base;
 }
 
-// ---------------------------------------------------------------------------
-// Workflow API
-// ---------------------------------------------------------------------------
-export const workflowApi = {
-  list: async () => { const res = await api.get('/workflows'); return res.data.workflows; },
-  get: async (id: string) => { const res = await api.get('/workflows/' + id); return res.data.workflow; },
-  create: async (data: any) => { const res = await api.post('/workflows', data); return res.data.workflow; },
-  update: async (id: string, data: any) => { const res = await api.put('/workflows/' + id, data); return res.data.workflow; },
-  delete: async (id: string) => { await api.delete('/workflows/' + id); },
-  getExecutions: async (workflowId?: string) => { const res = await api.get('/workflows/executions', { params: workflowId ? { workflowId } : {} }); return res.data.executions; },
-  retryExecution: async (id: string) => { const res = await api.post('/workflows/executions/' + id + '/retry'); return res.data; },
-  cancelExecution: async (id: string) => { const res = await api.post('/workflows/executions/' + id + '/cancel'); return res.data; },
-};
-
-// ---------------------------------------------------------------------------
-// Contact API
-// ---------------------------------------------------------------------------
-export const contactApi = {
-  list: async (params?: any) => { const res = await api.get('/contacts', { params }); return res.data; },
-  get: async (id: string) => { const res = await api.get('/contacts/' + id); return res.data.contact; },
-  create: async (data: any) => { const res = await api.post('/contacts', data); return res.data.contact; },
-  update: async (id: string, data: any) => { const res = await api.put('/contacts/' + id, data); return res.data.contact; },
-  delete: async (id: string) => { await api.delete('/contacts/' + id); },
-  import: async (data: any[]) => { const res = await api.post('/contacts/import', { contacts: data }); return res.data; },
-};
-
-// ---------------------------------------------------------------------------
-// Campaign API
-// ---------------------------------------------------------------------------
-export const campaignApi = {
-  list: async () => { const res = await api.get('/campaigns'); return res.data.campaigns; },
-  get: async (id: string) => { const res = await api.get('/campaigns/' + id); return res.data.campaign; },
-  create: async (data: any) => { const res = await api.post('/campaigns', data); return res.data.campaign; },
-  update: async (id: string, data: any) => { const res = await api.put('/campaigns/' + id, data); return res.data.campaign; },
-  delete: async (id: string) => { await api.delete('/campaigns/' + id); },
-  pause: async (id: string) => { const res = await api.post('/campaigns/' + id + '/pause'); return res.data; },
-  resume: async (id: string) => { const res = await api.post('/campaigns/' + id + '/resume'); return res.data; },
-};
+/**
+ * Get auth token for Socket.IO connection.
+ * Returns the Clerk JWT token, or falls back to dev token in bypass mode.
+ */
+export async function getSocketAuthToken(): Promise<string | null> {
+  try {
+    // @ts-expect-error — Clerk is injected globally by ClerkProvider
+    const clerk = window.__clerk;
+    if (clerk?.session) {
+      const token = await clerk.session.getToken();
+      if (token) return token;
+    }
+  } catch {
+    // No Clerk session — fall through
+  }
+  // Dev bypass: return a dummy token (backend will accept it in bypass mode)
+  return 'dev-bypass-token';
+}
 
 // ---------------------------------------------------------------------------
 // Team API
@@ -326,17 +359,6 @@ export const teamApi = {
 };
 
 // ---------------------------------------------------------------------------
-// Report API
-// ---------------------------------------------------------------------------
-export const reportApi = {
-  getTemplates: async () => { const res = await api.get('/reports/templates'); return res.data.templates; },
-  generate: async (templateId: string, params?: any) => { const res = await api.post('/reports/generate', { templateId, ...params }); return res.data.report; },
-  list: async () => { const res = await api.get('/reports'); return res.data.reports; },
-  download: async (id: string) => { const res = await api.get('/reports/' + id + '/download', { responseType: 'blob' }); return res.data; },
-  delete: async (id: string) => { await api.delete('/reports/' + id); },
-};
-
-// ---------------------------------------------------------------------------
 // Settings API
 // ---------------------------------------------------------------------------
 export const settingsApi = {
@@ -345,13 +367,4 @@ export const settingsApi = {
   getWorkspace: async () => { const res = await api.get('/settings/workspace'); return res.data; },
   exportData: async () => { const res = await api.get('/settings/export', { responseType: 'blob' }); return res.data; },
   deleteWorkspace: async () => { await api.delete('/settings/workspace'); },
-};
-
-// ---------------------------------------------------------------------------
-// API Key API
-// ---------------------------------------------------------------------------
-export const apiKeyApi = {
-  list: async () => { const res = await api.get('/api-keys'); return res.data.keys; },
-  generate: async (name: string) => { const res = await api.post('/api-keys', { name }); return res.data; },
-  revoke: async (id: string) => { await api.delete('/api-keys/' + id); },
 };

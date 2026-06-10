@@ -238,7 +238,9 @@ export function startDebugServer() {
         try {
           const entry = JSON.parse(body);
           addLog(entry.level || 'error', `[FE] ${entry.message}`, entry.code, { ...entry.meta, source: 'frontend', detail: entry.detail });
-        } catch { /* ignore parse errors */ }
+        } catch (err: any) {
+          logger.debug({ err: err.message }, 'Failed to parse incoming frontend log');
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end('{"ok":true}');
       });
@@ -253,7 +255,9 @@ export function startDebugServer() {
   try {
     const { execSync } = require('child_process');
     execSync(`lsof -ti:${PORT} | xargs kill -9 2>/dev/null`, { timeout: 2000 });
-  } catch { /* port was free or kill failed — either way, try to listen */ }
+  } catch (err: any) {
+    logger.debug({ err: err.message }, 'Port was free or kill failed — proceeding to listen');
+  }
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
@@ -437,7 +441,7 @@ async function fetchErrorCodes() {
   try {
     const res = await fetch('/api/error-codes');
     window._errorDescriptions = await res.json();
-  } catch {}
+  } catch (err) { console.error('Failed to fetch error codes:', err); }
 }
 
 async function refreshHealth() {
@@ -455,7 +459,7 @@ function connectStream() {
         if (logs.length > 500) logs.pop();
         renderLogs();
       }
-    } catch {}
+    } catch (err) { console.error('Failed to process stream message:', err); }
   };
   es.onerror = () => {
     setTimeout(connectStream, 3000);

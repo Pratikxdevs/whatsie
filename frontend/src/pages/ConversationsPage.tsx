@@ -1,173 +1,327 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { ConversationListItem } from "../components/conversations/ConversationListItem";
 import { MessageBubble } from "../components/conversations/MessageBubble";
 import { MessageInput } from "../components/conversations/MessageInput";
 import { ContactSidebar } from "../components/conversations/ContactSidebar";
 import { TypingIndicator } from "../components/conversations/TypingIndicator";
-import { PlatformBadge } from "../components/conversations/PlatformBadge";
-import { Search, Filter, MessageSquare } from "lucide-react";
+import { Search, MessageSquare, ChevronDown, Phone, Mail, Ban, Archive, Eye, Loader2 } from "lucide-react";
 import heroBg from "../assets/ChatGPT Image Apr 6, 2026, 02_58_13 AM.png";
-import { conversationApi, getSocketUrl } from "../services/api";
+import { conversationApi, getSocketUrl, getSocketAuthToken } from "../services/api";
 import { io as socketIo, Socket } from "socket.io-client";
 import { useAuth } from "../contexts/AuthContext";
+import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 
 // ---------------------------------------------------------------------------
-// Types (matches backend Prisma schema + nested lead relation)
+// Types — Evolution API shapes
 // ---------------------------------------------------------------------------
-interface ApiConversation {
+interface ChatItem {
   id: string;
-  tenantId: string;
-  leadId: string;
-  platform: string;
-  externalUserId: string;
-  status: string;
-  lastMessageAt: string;
-  createdAt: string;
-  updatedAt: string;
-  lead?: {
-    id: string;
-    name: string;
-    phone: string | null;
-    email: string | null;
-    status: string;
-  };
-  messages?: { content: string; direction: string; createdAt: string }[];
+  name: string;
+  jid: string;
+  pushName?: string;
+  lastMessage?: string;
+  lastMessageTimestamp?: string;
+  unreadCount?: number;
+  profilePicture?: string;
+  archived?: boolean;
+  pinned?: boolean;
+  isGroup?: boolean;
 }
 
-interface ApiMessage {
+interface ChatMessage {
   id: string;
-  tenantId?: string;
-  conversationId?: string;
-  direction: "in" | "out";
-  content: string;
-  messageType?: string;
-  platformMessageId?: string;
-  metadata?: Record<string, unknown>;
-  createdAt: string;
+  key: { remoteJid: string; fromMe: boolean; id: string };
+  pushName?: string;
+  message?: any;
+  messageTimestamp: number;
+  fromMe: boolean;
+  status?: string;
+  update?: number;
 }
 
-const filterTabs = ["All", "Open", "Closed", "Unread"];
+interface ProfilePicture {
+  jid: string;
+  pictureUrl: string | null;
+}
 
+const filterTabs = ["All", "Unread", "Archived"] as const;
+type FilterTab = typeof filterTabs[number];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function formatChatTime(ts?: string | number): string {
+  if (!ts) return "";
+  const date = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+  if (isToday(date)) return format(date, "h:mm a");
+  if (isYesterday(date)) return "Yesterday";
+  return format(date, "MMM d");
+}
+
+function extractTextFromMessage(msg: ChatMessage): string {
+  if (!msg.message) return "";
+  const m = msg.message;
+  if (m.conversation) return m.conversation;
+  if (m.extendedTextMessage?.text) return m.extendedTextMessage.text;
+  if (m.imageMessage?.caption) return `[Image] ${m.imageMessage.caption}`;
+  if (m.videoMessage?.caption) return `[Video] ${m.videoMessage.caption}`;
+  if (m.imageMessage) return "[Image]";
+  if (m.videoMessage) return "[Video]";
+  if (m.audioMessage) return "[Audio]";
+  if (m.documentMessage) return `[Document] ${m.documentMessage.fileName || ""}`;
+  if (m.locationMessage) return "[Location]";
+  if (m.contactMessage) return "[Contact]";
+  if (m.stickerMessage) return "[Sticker]";
+  return "[Message]";
+}
+
+function getMediaType(msg: ChatMessage): string | null {
+  if (!msg.message) return null;
+  if (msg.message.imageMessage) return "image";
+  if (msg.message.videoMessage) return "video";
+  if (msg.message.audioMessage) return "audio";
+  if (msg.message.documentMessage) return "document";
+  if (msg.message.stickerMessage) return "sticker";
+  if (msg.message.locationMessage) return "location";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+function SkeletonChatItem() {
+  return (
+    <div className="px-4 py-3 border-b border-zinc-800 animate-pulse">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-zinc-800" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 bg-zinc-800 rounded w-24" />
+          <div className="h-3 bg-zinc-800 rounded w-40" />
+        </div>
+        <div className="h-3 bg-zinc-800 rounded w-10" />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-3 p-8">
+      <div className="text-zinc-700">{icon}</div>
+      <p className="text-sm font-medium">{title}</p>
+      <p className="text-xs text-zinc-600">{subtitle}</p>
+    </div>
+  );
+}
+
+function ChatListItem({
+  chat,
+  isSelected,
+  onClick,
+  profilePic,
+}: {
+  chat: ChatItem;
+  isSelected: boolean;
+  onClick: () => void;
+  profilePic: string | null;
+}) {
+  const initials = (chat.name || chat.jid || "?")
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full px-4 py-3 border-b border-zinc-800 text-left transition-colors hover:bg-zinc-900 ${
+        isSelected ? "bg-zinc-900" : "bg-transparent"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        {profilePic ? (
+          <img
+            src={profilePic}
+            alt={chat.name}
+            className="w-10 h-10 rounded-full object-cover"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-medium text-zinc-300 shrink-0">
+            {initials}
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-zinc-100 truncate">
+              {chat.name || chat.pushName || chat.jid}
+            </span>
+            <span className="text-[10px] text-zinc-500 shrink-0 ml-2">
+              {formatChatTime(chat.lastMessageTimestamp)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between mt-0.5">
+            <span className="text-xs text-zinc-500 truncate max-w-[200px]">
+              {chat.lastMessage || "No messages yet"}
+            </span>
+            {(chat.unreadCount ?? 0) > 0 && (
+              <span className="ml-2 shrink-0 min-w-[18px] h-[18px] rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white px-1">
+                {chat.unreadCount}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 export function ConversationsPage() {
   const { user } = useAuth();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Chat list state
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [chatsLoading, setChatsLoading] = useState(true);
+  const [chatsError, setChatsError] = useState<string | null>(null);
+
+  // Selection state
+  const [selectedJid, setSelectedJid] = useState<string | null>(null);
+  const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
+
+  // Messages state
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
+  // UI state
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState("All");
+  const [activeFilter, setActiveFilter] = useState<FilterTab>("All");
   const [showSidebar, setShowSidebar] = useState(true);
-  const [isTyping, setIsTyping] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  // Real data state
-  const [conversations, setConversations] = useState<ApiConversation[]>([]);
-  const [messages, setMessages] = useState<ApiMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Profile pictures cache
+  const [profilePics, setProfilePics] = useState<Record<string, string | null>>({});
 
-  // Socket.IO ref — persists across renders without causing re-renders
+  // Typing indicator
+  const [contactTyping, setContactTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Read receipts
+  const [isMarkingRead, setIsMarkingRead] = useState(false);
+
+  // Socket.IO
   const socketRef = useRef<Socket | null>(null);
+  const selectedJidRef = useRef(selectedJid);
+  useEffect(() => { selectedJidRef.current = selectedJid; }, [selectedJid]);
 
-  // Keep a ref to selectedId so the socket callback always reads the current
-  // value without being listed as a dependency (which would reconnect on every select).
-  const selectedIdRef = useRef(selectedId);
-  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
-
-  // Connect to Socket.IO once per tenant — independent of conversation selection
+  // -----------------------------------------------------------------------
+  // Socket.IO connection
+  // -----------------------------------------------------------------------
   useEffect(() => {
     if (!user?.tenantId) return;
-
-    const socket = socketIo(getSocketUrl(), {
-      transports: ["websocket", "polling"],
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      socket.emit("join_tenant", user.tenantId);
-    });
-
-    socket.on("new_message", (payload: { conversationId: string | null; message: { id?: string; direction: "in" | "out"; content: string; createdAt: string; platform?: string } }) => {
-      const { conversationId, message } = payload;
-
-      // Skip early gateway notifications (no conversationId yet) — the worker
-      // will emit the real message with the conversationId shortly after.
-      if (!conversationId) return;
-
-      // Read selectedId from ref so we never tear down the socket on selection changes
-      const currentSelectedId = selectedIdRef.current;
-
-      // If the message belongs to the currently selected conversation, append it
-      if (conversationId === currentSelectedId) {
-        setMessages((prev) => {
-          // Deduplicate: skip if a message with the same id already exists
-          if (message.id && prev.some((m) => m.id === message.id)) return prev;
-          return [
-            ...prev,
-            {
-              id: message.id || `rt-${Date.now()}`,
-              direction: message.direction,
-              content: message.content,
-              messageType: "text",
-              createdAt: message.createdAt,
-            },
-          ];
-        });
-      }
-
-      // Update the conversation's lastMessage and move it to the top of the list
-      setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.id === conversationId);
-        if (idx === -1) return prev; // conversation not loaded yet
-
-        const updated = { ...prev[idx], lastMessageAt: message.createdAt };
-        // Put updated conversation at the top
-        const rest = prev.filter((c) => c.id !== conversationId);
-        return [updated, ...rest];
+    let cancelled = false;
+    (async () => {
+      const token = await getSocketAuthToken();
+      if (cancelled) return;
+      const socket = socketIo(getSocketUrl(), {
+        transports: ["websocket", "polling"],
+        auth: { token },
       });
-    });
+      socketRef.current = socket;
 
+      socket.on("connect", () => {
+        socket.emit("join_tenant", user.tenantId);
+      });
+
+      // Real-time new message
+      socket.on("new_message", (payload: { chat?: any; message?: any }) => {
+        const { chat, message } = payload;
+        if (!chat || !message) return;
+
+        const msgJid = message.key?.remoteJid || chat.jid;
+        if (!msgJid) return;
+
+        // Update chat list: move chat to top, update preview
+        setChats((prev) => {
+          const idx = prev.findIndex((c) => c.jid === msgJid);
+          const text = extractTextFromMessage(message);
+          const ts = message.messageTimestamp
+            ? new Date(message.messageTimestamp * 1000).toISOString()
+            : new Date().toISOString();
+
+          const updatedChat: ChatItem = {
+            ...(idx >= 0 ? prev[idx] : chat),
+            jid: msgJid,
+            name: chat.name || chat.pushName || msgJid,
+            lastMessage: text,
+            lastMessageTimestamp: ts,
+            unreadCount: selectedJidRef.current === msgJid
+              ? 0
+              : (idx >= 0 ? (prev[idx].unreadCount ?? 0) + 1 : 1),
+          };
+
+          const rest = idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
+          return [updatedChat, ...rest];
+        });
+
+        // If the message belongs to the currently open chat, append it
+        if (msgJid === selectedJidRef.current) {
+          setMessages((prev) => {
+            if (message.id && prev.some((m) => m.id === message.id)) return prev;
+            return [...prev, message];
+          });
+        }
+      });
+    })();
     return () => {
-      socket.disconnect();
+      cancelled = true;
+      socketRef.current?.disconnect();
       socketRef.current = null;
     };
   }, [user?.tenantId]);
 
-  // Load conversations on mount
+  // -----------------------------------------------------------------------
+  // Load chats
+  // -----------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        setLoading(true);
-        setError(null);
-        const data = await conversationApi.getConversations();
-        if (!cancelled) {
-          setConversations(Array.isArray(data) ? data : []);
-        }
+        setChatsLoading(true);
+        setChatsError(null);
+        const data = await conversationApi.getChats();
+        if (!cancelled) setChats(Array.isArray(data) ? data : []);
       } catch (err: unknown) {
         if (!cancelled) {
-          const msg = err instanceof Error ? err.message : "Failed to load conversations";
-          setError(msg);
+          setChatsError(err instanceof Error ? err.message : "Failed to load chats");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setChatsLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // Load messages when a conversation is selected
+  // -----------------------------------------------------------------------
+  // Load messages when a chat is selected
+  // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!selectedId) {
+    if (!selectedJid) {
       setMessages([]);
+      setSelectedChat(null);
       return;
     }
+
+    const chat = chats.find((c) => c.jid === selectedJid);
+    setSelectedChat(chat || null);
+
     let cancelled = false;
     (async () => {
       try {
         setMessagesLoading(true);
-        const data = await conversationApi.getMessages(selectedId);
-        if (!cancelled) {
-          setMessages(Array.isArray(data) ? data : []);
-        }
+        const data = await conversationApi.getChatMessages(selectedJid);
+        if (!cancelled) setMessages(Array.isArray(data) ? data : []);
       } catch (err: unknown) {
         if (!cancelled) {
           console.error("Failed to load messages:", err);
@@ -178,129 +332,322 @@ export function ConversationsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedId]);
+  }, [selectedJid, chats]);
 
-  // Send message handler
+  // -----------------------------------------------------------------------
+  // Mark messages as read when opening a conversation
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (!selectedJid) return;
+    const unread = messages.filter(
+      (m) => !m.fromMe && m.status !== "read" && m.status !== "played"
+    );
+    if (unread.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setIsMarkingRead(true);
+        await conversationApi.markAsRead(
+          unread.map((m) => ({
+            remoteJid: m.key.remoteJid,
+            fromMe: m.key.fromMe,
+            id: m.key.id,
+          }))
+        );
+        // Zero out unread count on the chat
+        setChats((prev) =>
+          prev.map((c) =>
+            c.jid === selectedJid ? { ...c, unreadCount: 0 } : c
+          )
+        );
+      } catch {
+        // Non-critical — swallow
+      } finally {
+        if (!cancelled) setIsMarkingRead(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedJid, messages]);
+
+  // -----------------------------------------------------------------------
+  // Fetch profile pictures for visible chats
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (chats.length === 0) return;
+    let cancelled = false;
+    const fetchPics = async () => {
+      const toFetch = chats.filter(
+        (c) => !(c.jid in profilePics) && !c.jid.includes("g.us")
+      );
+      const results: Record<string, string | null> = {};
+      await Promise.allSettled(
+        toFetch.slice(0, 20).map(async (c) => {
+          try {
+            const url = await conversationApi.getProfilePicture(c.jid);
+            results[c.jid] = url;
+          } catch {
+            results[c.jid] = null;
+          }
+        })
+      );
+      if (!cancelled && Object.keys(results).length > 0) {
+        setProfilePics((prev) => ({ ...prev, ...results }));
+      }
+    };
+    fetchPics();
+    return () => { cancelled = true; };
+  }, [chats]);
+
+  // -----------------------------------------------------------------------
+  // Typing indicator (composing → paused after 3s)
+  // -----------------------------------------------------------------------
+  const handleTyping = useCallback((number: string) => {
+    conversationApi.sendTyping(number, "composing").catch(() => {});
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      conversationApi.sendTyping(number, "paused").catch(() => {});
+    }, 3000);
+  }, []);
+
+  // -----------------------------------------------------------------------
+  // Send message via Evolution API
+  // -----------------------------------------------------------------------
   const handleSend = useCallback(async (text: string) => {
-    if (!selectedId) return;
+    if (!selectedJid || !selectedChat) return;
     setSendError(null);
     try {
-      setIsTyping(true);
-      const newMsg = await conversationApi.sendMessage(selectedId, text);
-      // Append the new message to the list
-      setMessages((prev) => [...prev, newMsg]);
-      // Update the conversation's lastMessage in the list
-      setConversations((prev) =>
+      await conversationApi.sendMessage(selectedJid, text);
+
+      // Append optimistic message to thread
+      const optimistic: ChatMessage = {
+        id: `opt-${Date.now()}`,
+        key: { remoteJid: selectedJid, fromMe: true, id: `opt-${Date.now()}` },
+        pushName: "Me",
+        message: { conversation: text },
+        messageTimestamp: Math.floor(Date.now() / 1000),
+        fromMe: true,
+        status: "pending",
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
+      // Update chat preview
+      setChats((prev) =>
         prev.map((c) =>
-          c.id === selectedId
-            ? { ...c, lastMessageAt: new Date().toISOString(), messages: [{ content: text, direction: "out", createdAt: new Date().toISOString() }] }
+          c.jid === selectedJid
+            ? {
+                ...c,
+                lastMessage: text,
+                lastMessageTimestamp: new Date().toISOString(),
+              }
             : c
         )
       );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to send message";
-      setSendError(msg);
-    } finally {
-      setIsTyping(false);
-    }
-  }, [selectedId]);
 
-  // Send media handler
+      // Send typing stopped
+      conversationApi.sendTyping(selectedJid, "paused").catch(() => {});
+    } catch (err: unknown) {
+      setSendError(err instanceof Error ? err.message : "Failed to send message");
+    }
+  }, [selectedJid, selectedChat]);
+
+  // -----------------------------------------------------------------------
+  // Send media via Evolution API
+  // -----------------------------------------------------------------------
   const handleSendMedia = useCallback(async (file: File) => {
-    if (!selectedId) return;
+    if (!selectedJid) return;
     setSendError(null);
     try {
-      setIsTyping(true);
-      // Determine messageType from the file MIME type
-      let messageType = 'document';
-      if (file.type.startsWith('image/')) messageType = 'image';
-      else if (file.type.startsWith('audio/')) messageType = 'audio';
-      else if (file.type.startsWith('video/')) messageType = 'video';
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1] || result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      const newMsg = await conversationApi.sendMedia(selectedId, file, messageType);
-      // Append the new message to the list
-      setMessages((prev) => [...prev, newMsg]);
-      // Update the conversation's lastMessage in the list
-      setConversations((prev) =>
+      let mediaType = "document";
+      if (file.type.startsWith("image/")) mediaType = "image";
+      else if (file.type.startsWith("audio/")) mediaType = "audio";
+      else if (file.type.startsWith("video/")) mediaType = "video";
+
+      const res = await (await import("../services/api")).api.post("/whatsapp/send-media", {
+        number: selectedJid,
+        mediatype: mediaType,
+        mimetype: file.type,
+        fileName: file.name,
+        body: base64,
+      });
+
+      if (res.data?.message) {
+        setMessages((prev) => [...prev, res.data.message]);
+      }
+
+      setChats((prev) =>
         prev.map((c) =>
-          c.id === selectedId
-            ? { ...c, lastMessageAt: new Date().toISOString(), messages: [{ content: file.name, direction: "out", createdAt: new Date().toISOString() }] }
+          c.jid === selectedJid
+            ? {
+                ...c,
+                lastMessage: `[${mediaType}] ${file.name}`,
+                lastMessageTimestamp: new Date().toISOString(),
+              }
             : c
         )
       );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to send media";
-      setSendError(msg);
-    } finally {
-      setIsTyping(false);
+      setSendError(err instanceof Error ? err.message : "Failed to send media");
     }
-  }, [selectedId]);
+  }, [selectedJid]);
 
-  // Filter conversations
-  const filteredConversations = useMemo(() => {
-    let convs = [...conversations];
+  // -----------------------------------------------------------------------
+  // Block/unblock contact
+  // -----------------------------------------------------------------------
+  const handleBlockContact = useCallback(async (number: string) => {
+    if (!selectedChat) return;
+    try {
+      const isBlocked = (selectedChat as any).blocked;
+      await conversationApi.blockContact(number, isBlocked ? "unblock" : "block");
+      setChats((prev) =>
+        prev.map((c) =>
+          c.jid === selectedJid ? { ...c, blocked: !isBlocked } : c
+        )
+      );
+    } catch (err) {
+      console.error("Block/unblock failed:", err);
+    }
+  }, [selectedChat, selectedJid]);
+
+  // -----------------------------------------------------------------------
+  // Archive/unarchive chat
+  // -----------------------------------------------------------------------
+  const handleArchiveChat = useCallback(async () => {
+    if (!selectedChat) return;
+    try {
+      const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+      await conversationApi.archiveChat(
+        lastMsg ? { key: lastMsg.key, message: lastMsg.message } : null,
+        selectedChat.jid,
+        !(selectedChat as any).archived
+      );
+      setChats((prev) =>
+        prev.map((c) =>
+          c.jid === selectedJid ? { ...c, archived: !(c as any).archived } : c
+        )
+      );
+    } catch (err) {
+      console.error("Archive failed:", err);
+    }
+  }, [selectedChat, selectedJid, messages]);
+
+  // -----------------------------------------------------------------------
+  // Delete message
+  // -----------------------------------------------------------------------
+  const handleDeleteMessage = useCallback(async (msg: ChatMessage) => {
+    try {
+      await conversationApi.deleteMessage(msg.key.id, msg.key.remoteJid, msg.key.fromMe);
+      setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  }, []);
+
+  // -----------------------------------------------------------------------
+  // Filtered chats
+  // -----------------------------------------------------------------------
+  const filteredChats = useMemo(() => {
+    let result = [...chats];
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      convs = convs.filter(
+      result = result.filter(
         (c) =>
-          (c.lead?.name || "").toLowerCase().includes(q) ||
-          (c.lead?.phone || "").includes(q) ||
-          (c.messages?.[0]?.content || "").toLowerCase().includes(q)
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.pushName || "").toLowerCase().includes(q) ||
+          (c.lastMessage || "").toLowerCase().includes(q) ||
+          (c.jid || "").includes(q)
       );
     }
 
-    if (activeFilter === "Open") convs = convs.filter((c) => c.status === "open");
-    if (activeFilter === "Closed") convs = convs.filter((c) => c.status === "closed");
-    if (activeFilter === "Unread") convs = convs.filter((c) => c.status === "open"); // backend has no unreadCount, show open as proxy
+    if (activeFilter === "Unread") {
+      result = result.filter((c) => (c.unreadCount ?? 0) > 0);
+    }
+    if (activeFilter === "Archived") {
+      result = result.filter((c) => (c as any).archived);
+    } else {
+      result = result.filter((c) => !(c as any).archived);
+    }
 
-    return convs;
-  }, [conversations, searchQuery, activeFilter]);
+    return result;
+  }, [chats, searchQuery, activeFilter]);
 
-  const selectedConversation = conversations.find((c) => c.id === selectedId);
-
-  // Map API conversation to the shape ConversationListItem expects
-  const mapConversationToProps = (conv: ApiConversation) => ({
-    id: conv.id,
-    contactName: conv.lead?.name || conv.externalUserId || "Unknown",
-    contactPhone: conv.lead?.phone || "",
-    platform: conv.platform,
-    botName: "", // backend does not store botName per conversation
-    lastMessage: conv.messages?.[0]?.content || "",
-    lastMessageAt: conv.lastMessageAt,
-    unreadCount: 0, // backend does not track unread count
-    status: (conv.status === "closed" ? "closed" : "open") as "open" | "closed",
-    leadStatus: conv.lead?.status || "new",
-  });
-
-  // Map API message to the shape MessageBubble expects
-  const mapMessageToProps = (msg: ApiMessage) => ({
+  // -----------------------------------------------------------------------
+  // Map ChatMessage → MessageData for MessageBubble
+  // -----------------------------------------------------------------------
+  const mapMessageToProps = (msg: ChatMessage) => ({
     id: msg.id,
-    direction: msg.direction,
-    content: msg.content,
-    messageType: msg.messageType || "text",
-    createdAt: msg.createdAt,
-    metadata: msg.metadata,
+    direction: (msg.fromMe ? "out" : "in") as "in" | "out",
+    content: extractTextFromMessage(msg),
+    messageType: getMediaType(msg) || "text",
+    createdAt: new Date(msg.messageTimestamp * 1000).toISOString(),
+    read: msg.status === "read" || msg.status === "played",
+    metadata: msg.message
+      ? {
+          mediaUrl: msg.message.imageMessage?.url || msg.message.videoMessage?.url || msg.message.audioMessage?.url || msg.message.documentMessage?.url || undefined,
+        }
+      : undefined,
   });
 
+  // -----------------------------------------------------------------------
+  // Map ChatItem → ContactSidebar conversation shape
+  // -----------------------------------------------------------------------
+  const mapChatToSidebarProps = (chat: ChatItem) => ({
+    id: chat.jid,
+    platform: "whatsapp",
+    status: (chat as any).archived ? "archived" : "open",
+    createdAt: chat.lastMessageTimestamp || new Date().toISOString(),
+    botName: "",
+    contactName: chat.name || chat.pushName || chat.jid,
+    contactPhone: chat.jid.replace(/@.*$/, "").replace("+", ""),
+    contactEmail: undefined,
+    source: "whatsapp",
+    leadStatus: "new",
+    messageCount: messages.length,
+  });
+
+  const selectedContactName = selectedChat
+    ? selectedChat.name || selectedChat.pushName || selectedChat.jid
+    : "";
+  const selectedInitials = selectedContactName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  // -----------------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-200 font-sans selection:bg-white/10 overflow-x-hidden">
+    <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-emerald-500/20 overflow-x-hidden">
       {/* Hero Section */}
-      <div className="relative w-full h-[280px] md:h-[320px] overflow-hidden flex flex-col border-b border-white/5">
+      <div className="relative w-full h-[280px] md:h-[320px] overflow-hidden flex flex-col border-b border-zinc-800">
         <div
           className="absolute inset-0 w-full h-full bg-no-repeat bg-cover bg-center opacity-30 mix-blend-screen"
           style={{ backgroundImage: `url('${heroBg}')` }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/60 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/80 to-transparent" />
-        <div className="relative z-20 w-full">
-        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/80 to-transparent" />
         <div className="relative z-10 w-full px-6 md:px-12 lg:px-16 flex-1 flex flex-col justify-end pb-8">
-          <h1 className="text-white font-semibold leading-[0.92] tracking-[-0.02em]" style={{ fontSize: "clamp(52px, 9vw, 108px)", lineHeight: 0.92 }}>
+          <h1
+            className="text-white font-semibold leading-[0.92] tracking-[-0.02em]"
+            style={{ fontSize: "clamp(52px, 9vw, 108px)", lineHeight: 0.92 }}
+          >
             CONVERSATIONS
           </h1>
           <p className="text-zinc-400 mt-4 text-lg md:text-xl max-w-2xl">
-            View and manage customer conversations across all platforms.
+            Real-time WhatsApp conversations powered by Evolution API.
           </p>
         </div>
       </div>
@@ -308,100 +655,116 @@ export function ConversationsPage() {
       {/* 3-Panel Layout */}
       <div className="w-full px-6 md:px-12 lg:px-16 py-6 md:py-8">
         <div className="flex gap-4 h-[calc(100vh-400px)] min-h-[500px]">
-          {/* Left: Conversation List */}
-          <div className="w-80 flex-shrink-0 flex flex-col bg-[#0f0f11] rounded-lg border border-white/5 overflow-hidden">
+
+          {/* ─── LEFT: Chat List ─── */}
+          <div className="w-80 flex-shrink-0 flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
             {/* Search */}
-            <div className="p-3 border-b border-white/5">
+            <div className="p-3 border-b border-zinc-800">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search conversations..."
-                  className="w-full bg-zinc-900 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-green-500/50"
+                  placeholder="Search by name, message, or number..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
                 />
               </div>
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex gap-1 px-3 py-2 border-b border-white/5">
+            <div className="flex gap-1 px-3 py-2 border-b border-zinc-800">
               {filterTabs.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveFilter(tab)}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                     activeFilter === tab
-                      ? "bg-green-500/10 text-green-400"
+                      ? "bg-emerald-500/10 text-emerald-400"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
                   }`}
                 >
                   {tab}
                   {tab === "Unread" && (
                     <span className="ml-1 text-[10px]">
-                      ({conversations.filter((c) => c.status === "open").length})
+                      ({chats.filter((c) => (c.unreadCount ?? 0) > 0).length})
                     </span>
                   )}
                 </button>
               ))}
             </div>
 
-            {/* Conversation Items */}
+            {/* Chat Items */}
             <div className="flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="p-4 text-center text-zinc-500 text-sm">Loading conversations...</div>
-              ) : error ? (
-                <div className="p-4 text-center text-red-400 text-sm">{error}</div>
-              ) : (
-                <>
-                  {filteredConversations.map((conv) => (
-                    <ConversationListItem
-                      key={conv.id}
-                      conversation={mapConversationToProps(conv)}
-                      isSelected={conv.id === selectedId}
-                      onClick={() => setSelectedId(conv.id)}
-                    />
+              {chatsLoading ? (
+                <div className="space-y-0">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonChatItem key={i} />
                   ))}
-                  {filteredConversations.length === 0 && (
-                    <div className="p-4 text-center text-zinc-500 text-sm">No conversations found</div>
-                  )}
-                </>
+                </div>
+              ) : chatsError ? (
+                <div className="p-4 text-center text-red-400 text-sm">{chatsError}</div>
+              ) : filteredChats.length === 0 ? (
+                <div className="p-4 text-center text-zinc-500 text-sm">
+                  {searchQuery ? "No chats match your search" : "No WhatsApp chats yet"}
+                </div>
+              ) : (
+                filteredChats.map((chat) => (
+                  <ChatListItem
+                    key={chat.jid}
+                    chat={chat}
+                    isSelected={chat.jid === selectedJid}
+                    onClick={() => setSelectedJid(chat.jid)}
+                    profilePic={profilePics[chat.jid] ?? null}
+                  />
+                ))
               )}
             </div>
           </div>
 
-          {/* Center: Message Thread */}
-          <div className="flex-1 flex flex-col bg-[#0f0f11] rounded-lg border border-white/5 overflow-hidden">
-            {selectedConversation ? (
+          {/* ─── CENTER: Message Thread ─── */}
+          <div className="flex-1 flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+            {selectedJid && selectedChat ? (
               <>
-                {/* Header */}
-                <div className="px-4 py-3 border-b border-white/5 bg-[#141415] flex items-center justify-between">
+                {/* Thread Header */}
+                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-medium text-zinc-300">
-                      {(selectedConversation.lead?.name || "U").split(" ").map((n) => n[0]).join("")}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-white">{selectedConversation.lead?.name || "Unknown"}</span>
-                        <PlatformBadge platform={selectedConversation.platform} />
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                          selectedConversation.lead?.status === "qualified" ? "bg-yellow-500/10 text-yellow-400" :
-                          selectedConversation.lead?.status === "converted" ? "bg-green-500/10 text-green-400" :
-                          selectedConversation.lead?.status === "contacted" ? "bg-blue-500/10 text-blue-400" :
-                          "bg-zinc-700/50 text-zinc-400"
-                        }`}>
-                          {selectedConversation.lead?.status || "new"}
-                        </span>
+                    {profilePics[selectedJid] ? (
+                      <img
+                        src={profilePics[selectedJid]!}
+                        alt={selectedContactName}
+                        className="w-9 h-9 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-medium text-zinc-300">
+                        {selectedInitials}
                       </div>
-                      <span className="text-xs text-zinc-500">{selectedConversation.lead?.phone || ""} {selectedConversation.lead?.phone ? "·" : ""} {selectedConversation.platform}</span>
+                    )}
+                    <div>
+                      <span className="text-sm font-medium text-zinc-100">
+                        {selectedContactName}
+                      </span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium">
+                          WhatsApp
+                        </span>
+                        {isMarkingRead && (
+                          <span className="text-[10px] text-zinc-500">Marking read...</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setShowSidebar(!showSidebar)}
-                      className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                      className={`p-1.5 rounded-md transition-colors ${
+                        showSidebar
+                          ? "text-emerald-400 bg-emerald-500/10"
+                          : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                      }`}
+                      title="Toggle contact info"
                     >
-                      <Filter className="w-4 h-4" />
+                      <Eye className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -409,50 +772,63 @@ export function ConversationsPage() {
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-1">
                   {messagesLoading ? (
-                    <div className="text-center text-zinc-500 text-sm py-8">Loading messages...</div>
+                    <div className="flex flex-col items-center justify-center h-full gap-3">
+                      <Loader2 className="w-6 h-6 text-emerald-400 animate-spin" />
+                      <span className="text-sm text-zinc-500">Loading messages...</span>
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <EmptyState
+                      icon={<MessageSquare className="w-10 h-10" />}
+                      title="No messages yet"
+                      subtitle="Start a conversation by sending a message below."
+                    />
                   ) : (
-                    <>
-                      {messages.map((msg) => (
-                        <MessageBubble key={msg.id} message={mapMessageToProps(msg)} />
-                      ))}
-                    </>
+                    messages.map((msg) => (
+                      <MessageBubble key={msg.id} message={mapMessageToProps(msg)} />
+                    ))
                   )}
-                  {isTyping && <TypingIndicator label="Sending..." />}
+                  {contactTyping && (
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] font-medium text-zinc-400">
+                        {selectedInitials}
+                      </div>
+                      <TypingIndicator label={`${selectedContactName} is typing...`} />
+                    </div>
+                  )}
                 </div>
 
-                {/* Input */}
+                {/* Send error */}
                 {sendError && (
                   <div className="px-4 py-2 bg-red-500/10 border-t border-red-500/20 text-red-400 text-xs flex items-center justify-between">
                     <span>{sendError}</span>
-                    <button onClick={() => setSendError(null)} className="text-red-400 hover:text-red-300 ml-2 text-xs">Dismiss</button>
+                    <button
+                      onClick={() => setSendError(null)}
+                      className="text-red-400 hover:text-red-300 ml-2 text-xs"
+                    >
+                      Dismiss
+                    </button>
                   </div>
                 )}
-                <MessageInput onSend={handleSend} onSendMedia={handleSendMedia} />
+
+                {/* Input */}
+                <MessageInput
+                  onSend={handleSend}
+                  onSendMedia={handleSendMedia}
+                />
               </>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-3">
-                <MessageSquare className="w-12 h-12 text-zinc-700" />
-                <p className="text-sm">Select a conversation to view messages</p>
-              </div>
+              <EmptyState
+                icon={<MessageSquare className="w-12 h-12" />}
+                title="Select a conversation"
+                subtitle="Choose a chat from the left panel to view messages."
+              />
             )}
           </div>
 
-          {/* Right: Contact Sidebar */}
-          {selectedConversation && showSidebar && (
+          {/* ─── RIGHT: Contact Sidebar ─── */}
+          {selectedChat && showSidebar && (
             <ContactSidebar
-              conversation={{
-                id: selectedConversation.id,
-                platform: selectedConversation.platform,
-                status: selectedConversation.status,
-                createdAt: selectedConversation.createdAt,
-                botName: "",
-                contactName: selectedConversation.lead?.name || "Unknown",
-                contactPhone: selectedConversation.lead?.phone || "",
-                contactEmail: selectedConversation.lead?.email || undefined,
-                source: selectedConversation.platform,
-                leadStatus: selectedConversation.lead?.status || "new",
-                messageCount: messages.length,
-              }}
+              conversation={mapChatToSidebarProps(selectedChat)}
             />
           )}
         </div>

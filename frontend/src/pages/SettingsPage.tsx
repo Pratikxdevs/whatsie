@@ -1,20 +1,18 @@
 import { useState } from "react";
 import heroBg from "../assets/ChatGPT Image Apr 6, 2026, 02_58_13 AM.png";
 import { GeneralTab } from "../components/settings/GeneralTab";
+import { ProfileTab } from "../components/settings/ProfileTab";
 import { TeamTab } from "../components/settings/TeamTab";
 import { APIKeysTab } from "../components/settings/APIKeysTab";
-import { CredentialsTab } from "../components/settings/CredentialsTab";
-import { IntegrationsTab } from "../components/settings/IntegrationsTab";
 import { BillingTab } from "../components/settings/BillingTab";
 import { DangerZoneTab } from "../components/settings/DangerZoneTab";
-import { Settings, Users, Key, Shield, Puzzle, CreditCard, AlertTriangle } from "lucide-react";
+import { Settings, User, Users, Key, CreditCard, AlertTriangle } from "lucide-react";
 
 const tabs = [
   { id: "general", label: "General", icon: Settings },
+  { id: "profile", label: "Profile", icon: User },
   { id: "team", label: "Team", icon: Users },
   { id: "api", label: "API Keys", icon: Key },
-  { id: "credentials", label: "Credentials", icon: Shield },
-  { id: "integrations", label: "Integrations", icon: Puzzle },
   { id: "billing", label: "Billing", icon: CreditCard },
   { id: "danger", label: "Danger Zone", icon: AlertTriangle },
 ];
@@ -74,10 +72,9 @@ export function SettingsPage() {
           <div className="flex-1 min-w-0">
             <div className="bg-[#0f0f11] border border-white/5 rounded-xl p-6">
               {activeTab === "general" && <GeneralTab />}
+              {activeTab === "profile" && <ProfileTab />}
               {activeTab === "team" && <TeamTab />}
               {activeTab === "api" && <APIKeysTab />}
-              {activeTab === "credentials" && <CredentialsTab />}
-              {activeTab === "integrations" && <IntegrationsTab />}
               {activeTab === "billing" && <BillingTab />}
               {activeTab === "danger" && <DangerZoneTab />}
             </div>

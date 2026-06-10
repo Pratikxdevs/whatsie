@@ -12,37 +12,34 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-// Dev bypass tenant — used when DEV_AUTH_BYPASS=true
-const DEV_TENANT_ID = process.env.DEFAULT_TENANT_ID;
-const DEV_AUTH_BYPASS = process.env.DEV_AUTH_BYPASS === 'true';
+/**
+ * HMAC-SHA256 hash of an API key with server-side pepper.
+ * Pepper is read from API_KEY_PEPPER env var. Required in production.
+ */
+function hashApiKey(key: string): string {
+  const pepper = process.env.API_KEY_PEPPER;
+  if (!pepper) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('API_KEY_PEPPER is required in production');
+    }
+    logger.warn('API_KEY_PEPPER not set — using insecure dev fallback. DO NOT use in production.');
+  }
+  const effectivePepper = pepper || 'dev-pepper-do-not-use-in-prod';
+  return crypto.createHmac('sha256', effectivePepper).update(key).digest('hex');
+}
 
 /**
- * Dual-mode authentication middleware.
+ * Authentication middleware.
  * Supports:
- *   1. Dev bypass (DEV_AUTH_BYPASS=true) — auto-assigns default tenant
- *   2. API Key header (X-API-KEY: <key>) — resolves tenant from ApiKey table
+ *   1. API Key header (X-API-KEY: <key>) — HMAC-SHA256 + pepper lookup
+ *   2. Clerk JWT (req.auth populated by clerkMiddleware upstream)
  *   3. Bearer JWT tokens (Authorization: Bearer <token>)
- *   4. Clerk JWT (req.auth populated by clerkMiddleware upstream)
  */
 export const authenticateToken = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  // Strategy 0: Dev bypass — auto-assign default tenant
-  if (DEV_AUTH_BYPASS) {
-    if (!DEV_TENANT_ID) {
-      logger.fatal('DEV_AUTH_BYPASS is enabled but DEFAULT_TENANT_ID is not set');
-      return res.status(500).json({ error: 'Server misconfigured: DEFAULT_TENANT_ID required when DEV_AUTH_BYPASS is enabled' });
-    }
-    req.user = {
-      id: 'dev-user',
-      tenantId: DEV_TENANT_ID,
-      role: 'admin'
-    };
-    return next();
-  }
-
-  // Strategy 1: Check X-API-KEY header first
+  // Strategy 1: API Key header
   const apiKey = req.headers['x-api-key'] as string | undefined;
   if (apiKey) {
-    const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+    const keyHash = hashApiKey(apiKey);
     const keyRecord = await prisma.apiKey.findFirst({
       where: { keyHash },
       include: { tenant: true }
@@ -81,7 +78,7 @@ export const authenticateToken = async (req: AuthenticatedRequest, res: Response
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return res.status(401).json({ error: 'Authentication required — provide a Bearer token or X-API-KEY header' });
   }
 
   const jwtSecret = process.env.JWT_SECRET;

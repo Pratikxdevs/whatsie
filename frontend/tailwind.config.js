@@ -7,6 +7,9 @@ export default {
   ],
   theme: {
   	extend: {
+  		fontFamily: {
+  			sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  		},
   		keyframes: {
   			'accordion-down': {
   				from: {
@@ -43,5 +46,5 @@ export default {
   		}
   	}
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 }

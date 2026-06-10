@@ -98,7 +98,7 @@ describe('Leads API', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(404);
-      expect(res.body.error).toBe('Lead not found');
+      expect(res.body.detail).toBe('Lead not found');
     });
   });
 

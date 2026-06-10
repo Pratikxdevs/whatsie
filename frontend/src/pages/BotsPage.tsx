@@ -8,7 +8,8 @@ import { BotDetailPanel } from '../components/bots/BotDetailPanel';
 import { AddBotModal } from '../components/bots/AddBotModal';
 import { BulkActions } from '../components/bots/BulkActions';
 import { QRCodeModal } from '../components/bots/QRCodeModal';
-import { botApi, getSocketUrl } from '../services/api';
+import { botApi, getSocketUrl, getSocketAuthToken } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import heroBg from '../assets/ChatGPT Image Apr 6, 2026, 02_58_13 AM.png';
 
 const STATUS_OPTIONS: { value: BotStatus | 'all'; label: string }[] = [
@@ -41,6 +42,7 @@ function mapWorkspaceToBot(ws: any): Bot {
 }
 
 export function BotsPage() {
+  const { user } = useAuth();
   const [bots, setBots] = useState<Bot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -64,22 +66,26 @@ export function BotsPage() {
 
   // Socket.IO — real-time bot status updates
   useEffect(() => {
-    const socket: Socket = ioClient(getSocketUrl());
-    // Join tenant room (use 'default' for now since auth is mocked)
-    socket.emit('join_tenant', 'default');
-    socket.on('bot_status_change', ({ botId, status }: { botId: string; status: BotStatus }) => {
-      setBots(prev => prev.map(b => b.id === botId ? {
-        ...b,
-        status,
-        lastConnected: status === 'connected' ? new Date().toISOString() : b.lastConnected,
-      } : b));
-      // Update QR modal if open for this bot
-      if (status === 'connected') {
-        setQrModal(prev => prev && prev.botId === botId ? { ...prev, status: 'connected' } : prev);
-      }
-    });
-    return () => { socket.disconnect(); };
-  }, []);
+    if (!user?.tenantId) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getSocketAuthToken();
+      if (cancelled) return;
+      const socket: Socket = ioClient(getSocketUrl(), { auth: { token } });
+      socket.on('bot_status_change', ({ botId, status }: { botId: string; status: BotStatus }) => {
+        setBots(prev => prev.map(b => b.id === botId ? {
+          ...b,
+          status,
+          lastConnected: status === 'connected' ? new Date().toISOString() : b.lastConnected,
+        } : b));
+        if (status === 'connected') {
+          setQrModal(prev => prev && prev.botId === botId ? { ...prev, status: 'connected' } : prev);
+        }
+      });
+      return () => { socket.disconnect(); };
+    })();
+    return () => { cancelled = true; };
+  }, [user?.tenantId]);
 
   useEffect(() => {
     return () => { intervalsRef.current.forEach(ids => ids.forEach(id => clearInterval(id))); };
@@ -252,7 +258,7 @@ export function BotsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-200">
+    <div className="min-h-screen bg-zinc-950 text-zinc-200">
       {/* Hero */}
       <div className="relative w-full h-[280px] md:h-[320px] overflow-hidden flex flex-col border-b border-white/5">
         <div

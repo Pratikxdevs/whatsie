@@ -6,20 +6,24 @@ import { recordAiUsage } from '../billing/recordUsage';
 import { prisma } from '../db/prisma';
 
 // Dynamic client caching
-let openaiClient: OpenAI | null = null;
-let googleAiClient: GoogleGenerativeAI | null = null;
-let cachedProvider: string | null = null;
+const openaiClients = new Map<string, OpenAI>();
+const googleAiClients = new Map<string, GoogleGenerativeAI>();
+
+// Bot lookup caching (TTL 60s)
+const botCache = new Map<string, { config: any, expires: number }>();
 
 /**
  * Get or create OpenAI-compatible client.
- * Re-creates if provider changes (e.g., from env to per-bot config).
+ * Caches by provider + apiKey + baseURL.
  */
 function getOpenAIClient(provider: string, apiKey: string, baseURL?: string): OpenAI {
-  if (openaiClient && cachedProvider === provider) return openaiClient;
-
-  openaiClient = new OpenAI({ baseURL, apiKey });
-  cachedProvider = provider;
-  return openaiClient;
+  const cacheKey = `${provider}:${apiKey}:${baseURL || ''}`;
+  if (openaiClients.has(cacheKey)) {
+    return openaiClients.get(cacheKey)!;
+  }
+  const client = new OpenAI({ baseURL, apiKey });
+  openaiClients.set(cacheKey, client);
+  return client;
 }
 
 /**
@@ -37,15 +41,22 @@ async function resolveAiConfig(tenantId: string, userId?: string): Promise<{
 }> {
   // Try to get bot config from DB
   let botConfig: Record<string, any> = {};
+  const now = Date.now();
   try {
-    const bot = await prisma.bot.findFirst({
-      where: { tenantId, status: 'connected' },
-    });
-    if (bot?.config && typeof bot.config === 'object') {
-      botConfig = bot.config as Record<string, any>;
+    const cached = botCache.get(tenantId);
+    if (cached && cached.expires > now) {
+      botConfig = cached.config;
+    } else {
+      const bot = await prisma.bot.findFirst({
+        where: { tenantId, status: 'connected' },
+      });
+      if (bot?.config && typeof bot.config === 'object') {
+        botConfig = bot.config as Record<string, any>;
+      }
+      botCache.set(tenantId, { config: botConfig, expires: now + 60000 });
     }
-  } catch {
-    // DB lookup failed — fall through to env vars
+  } catch (err: any) {
+    logger.debug({ err: err.message }, 'Failed to lookup bot config, falling back to env vars');
   }
 
   // Resolve provider
@@ -61,8 +72,8 @@ async function resolveAiConfig(tenantId: string, userId?: string): Promise<{
       if (credential) {
         userApiKey = credential.keyValue;
       }
-    } catch {
-      // DB lookup failed — fall through to env vars
+    } catch (err: any) {
+      logger.debug({ err: err.message }, 'Failed to lookup user credential, falling back to env vars');
     }
   }
 
@@ -120,7 +131,8 @@ export async function generateAiResponse(
   systemPromptOverride?: string,
 ): Promise<string> {
   const config = await resolveAiConfig(tenantId, userId);
-  const systemPrompt = systemPromptOverride || config.systemPrompt;
+  const basePrompt = systemPromptOverride || config.systemPrompt;
+  const systemPrompt = basePrompt + "\n\nIMPORTANT INSTRUCTION: Evaluate if this user is a qualified lead based on their message. If they express interest, ask for pricing, or seem like a valid lead for analytics, you MUST append the exact string '|||LEAD_QUALIFIED|||' to the very end of your response. If they are not a lead, do not append it.";
 
   // Validate API key
   if (!config.apiKey) {
@@ -189,11 +201,13 @@ async function generateGeminiResponse(
   incomingMessageText: string,
   tenantId: string,
 ): Promise<string> {
-  if (!googleAiClient) {
-    googleAiClient = new GoogleGenerativeAI(config.apiKey!);
+  let client = googleAiClients.get(config.apiKey!);
+  if (!client) {
+    client = new GoogleGenerativeAI(config.apiKey!);
+    googleAiClients.set(config.apiKey!, client);
   }
 
-  const genModel = googleAiClient.getGenerativeModel({ model: config.model });
+  const genModel = client.getGenerativeModel({ model: config.model });
   const geminiHistory = history.filter(m => m.role !== 'system').map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],

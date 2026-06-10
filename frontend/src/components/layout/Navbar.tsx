@@ -225,17 +225,16 @@ const navigationLinks = [
   { href: "/bots", label: "Bots" },
   { href: "/conversations", label: "Conversations" },
   { href: "/leads", label: "Leads" },
-  { href: "/workflows", label: "Workflows" },
-  { href: "/contacts", label: "Contacts" },
   { href: "/analytics", label: "Analytics" },
   { href: "/settings", label: "Settings" },
+  { href: "/team", label: "Team" },
 ]
 
 export default function Navbar() {
   const location = useLocation()
 
   return (
-    <header className="border-white/5 w-full flex-col items-center justify-between gap-3 border-b px-4 xl:px-6 bg-[#09090b]">
+    <header className="border-white/5 w-full flex-col items-center justify-between gap-3 border-b px-4 xl:px-6 bg-zinc-950">
       <div className="flex w-full items-center justify-between gap-4 h-14">
         <div className="flex flex-1 items-center justify-start gap-2">
           <Link

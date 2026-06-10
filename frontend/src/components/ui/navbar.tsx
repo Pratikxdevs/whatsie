@@ -30,7 +30,7 @@ export function MobileNav({ nav }: MobileNavProps) {
       </button>
 
       {open && (
-        <div className="absolute top-14 left-0 right-0 z-50 bg-[#0c0c0e] border-b border-white/5 p-4 shadow-lg">
+        <div className="absolute top-14 left-0 right-0 z-50 bg-zinc-950 border-b border-white/5 p-4 shadow-lg">
           {nav.map((group) => (
             <div key={group.name}>
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">{group.name}</p>

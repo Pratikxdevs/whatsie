@@ -101,7 +101,7 @@ router.get('/dashboard-stats', async (req, res) => {
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
     const [totalLeads, openConversations, messagesThisMonth, activeBots, convertedLeads] = await Promise.all([
-      prisma.lead.count({ where: { tenantId } }),
+      prisma.lead.count({ where: { tenantId, status: { not: 'new' } } }),
       prisma.conversation.count({ where: { tenantId, status: 'open' } }),
       prisma.message.count({ where: { tenantId, createdAt: { gte: monthStart } } }),
       prisma.bot.count({ where: { tenantId, status: 'connected' } }),

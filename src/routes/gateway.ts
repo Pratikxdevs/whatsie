@@ -82,7 +82,6 @@ const authenticateTenant = async (req: Request, res: Response, next: NextFunctio
 
 router.post(
   '/whatsapp/:tenantId',
-  authenticateTenant,
   rateLimitMiddleware,
   verifyWhatsAppSignature,
   async (req: Request, res: Response) => {

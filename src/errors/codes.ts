@@ -7,7 +7,6 @@
  *   DB   = Database / Prisma errors
  *   AUTH = Authentication / authorization
  *   WA   = WhatsApp / Evolution API
- *   TG   = Telegram adapter
  *   Q    = Queue / BullMQ / Redis
  *   WS   = WebSocket / Socket.IO
  *   SYS  = System / infrastructure
@@ -51,23 +50,6 @@ export const ErrorCode = {
   WA_007: 'WA_007',   // Message normalization failed
   WA_008: 'WA_008',   // Duplicate message (idempotency)
   WA_009: 'WA_009',   // Session name mismatch
-
-  // ── Telegram Errors ──────────────────────────────────────────────
-  TG_001: 'TG_001',   // Bot token invalid
-  TG_002: 'TG_002',   // Webhook set failed
-  TG_003: 'TG_003',   // Send message failed
-
-  // ── Twitter Errors ──────────────────────────────────────────────
-  TW_001: 'TW_001',   // Invalid credentials (login failed)
-  TW_002: 'TW_002',   // Rate limit exceeded
-  TW_003: 'TW_003',   // Send DM failed
-  TW_004: 'TW_004',   // Post tweet failed
-  TW_005: 'TW_005',   // Media upload failed
-  TW_006: 'TW_006',   // Session expired — needs re-auth
-  TW_007: 'TW_007',   // Account suspended/locked
-  TW_008: 'TW_008',   // Sync failed
-  TW_009: 'TW_009',   // Twitter API service unavailable
-  TW_010: 'TW_010',   // CAPTCHA required
 
   // ── Queue / Redis Errors ─────────────────────────────────────────
   Q_001: 'Q_001',     // Redis connection failed
@@ -128,21 +110,6 @@ export const ERROR_DESCRIPTIONS: Record<string, string> = {
   WA_007: 'Failed to normalize incoming webhook payload',
   WA_008: 'Duplicate message received (already processed)',
   WA_009: 'Session name does not match any bot record',
-
-  TG_001: 'Telegram bot token invalid',
-  TG_002: 'Failed to set Telegram webhook',
-  TG_003: 'Failed to send Telegram message',
-
-  TW_001: 'Twitter login failed — invalid credentials',
-  TW_002: 'Twitter rate limit exceeded',
-  TW_003: 'Failed to send Twitter DM',
-  TW_004: 'Failed to post tweet',
-  TW_005: 'Twitter media upload failed',
-  TW_006: 'Twitter session expired — re-authentication needed',
-  TW_007: 'Twitter account suspended or locked',
-  TW_008: 'Twitter sync operation failed',
-  TW_009: 'Twitter API service unavailable',
-  TW_010: 'Twitter CAPTCHA challenge required',
 
   Q_001: 'Redis connection failed — check Redis is running',
   Q_002: 'Failed to enqueue job to BullMQ',

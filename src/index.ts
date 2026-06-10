@@ -2,26 +2,25 @@ import express from 'express';
 import dotenv from 'dotenv';
 import http from 'http';
 import helmet from 'helmet';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import requestId from './middleware/requestId';
 import { logger } from './config/logger';
 import { authRateLimiter, apiRateLimiter } from './middleware/rateLimit';
 import gatewayRouter from './routes/gateway';
 import authRouter from './api/auth';
 import whatsappRouter from './routes/whatsapp.routes';
+import whatsappChatRouter from './routes/whatsapp-chat';
 import workspacesRouter from './routes/workspaces';
 import webhookRouter from './routes/webhooks';
-import adminRouter from './routes/admin';
+import aiBridgeRouter from './AiInteg/endpoints';
 import analyticsRouter from './routes/analytics';
 import billingRouter from './routes/billing';
 import conversationsRouter from './routes/conversations';
 import leadsRouter from './routes/leads';
-import aiBridgeRouter from './AiInteg/endpoints';
 import credentialsRouter from './routes/credentials';
-import workflowRouter from './routes/workflows';
-import apiKeyRouter from './routes/apiKeys';
 import teamRouter from './routes/team';
-import eventRouter from './routes/events';
 import './workers/index'; // Spawns the BullMQ worker in the background
 
 import { redisConnection } from './queue/setup';
@@ -65,7 +64,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "http:", "https:"],
       fontSrc: ["'self'", "data:"],
@@ -90,14 +89,14 @@ app.use((req, res, next) => {
 });
 
 // CORS — allow frontend dev server (port 5173) and any origin in development
-app.use((req, res, next) => {
-  const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:5173',
-    process.env.FRONTEND_URL,
-  ].filter(Boolean);
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
 
+app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
@@ -118,14 +117,91 @@ app.get('/metrics', async (req, res) => {
 // Initialize HTTP Server explicitly to bind WebSockets securely
 const server = http.createServer(app);
 export const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+  cors: {
+    origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+// Socket.IO authentication middleware
+const AUTH_BYPASS = process.env.DEV_AUTH_BYPASS === 'true';
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID;
+const JWT_SECRET = process.env.JWT_SECRET;
+
+io.use(async (socket, next) => {
+  try {
+    // Dev bypass: allow connection with a default tenant
+    if (AUTH_BYPASS) {
+      if (!DEFAULT_TENANT_ID) {
+        return next(new Error('Server misconfigured: DEFAULT_TENANT_ID required when DEV_AUTH_BYPASS is enabled'));
+      }
+      (socket as any).tenantId = DEFAULT_TENANT_ID;
+      (socket as any).userId = 'dev-user';
+      return next();
+    }
+
+    // Extract token from handshake auth or query
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+
+    if (!token || typeof token !== 'string') {
+      return next(new Error('Authentication required'));
+    }
+
+    // Try API key first (X-API-KEY header)
+    const apiKeyHeader = socket.handshake.auth?.apiKey;
+    if (apiKeyHeader && typeof apiKeyHeader === 'string') {
+      const keyHash = crypto.createHash('sha256').update(apiKeyHeader).digest('hex');
+      const keyRecord = await prisma.apiKey.findFirst({
+        where: { keyHash },
+        include: { tenant: true }
+      });
+      if (keyRecord && keyRecord.tenant.status === 'active') {
+        (socket as any).tenantId = keyRecord.tenantId;
+        (socket as any).userId = 'api-key-user';
+        return next();
+      }
+      return next(new Error('Invalid API Key'));
+    }
+
+    // Verify JWT token
+    if (!JWT_SECRET) {
+      logger.error('JWT_SECRET is missing for Socket.IO auth');
+      return next(new Error('Server misconfigured'));
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET) as { id?: string; tenantId?: string; userId?: string; sub?: string };
+    const tenantId = decoded.tenantId;
+    const userId = decoded.id || decoded.userId || decoded.sub;
+
+    if (!tenantId) {
+      return next(new Error('Invalid token: missing tenantId'));
+    }
+
+    (socket as any).tenantId = tenantId;
+    (socket as any).userId = userId;
+    next();
+  } catch (err: any) {
+    logger.warn({ err: err.message }, 'Socket.IO auth failed');
+    next(new Error('Authentication failed'));
+  }
 });
 
 io.on('connection', (socket) => {
-  logger.info({ socketId: socket.id }, `Socket client connected`);
+  const tenantId = (socket as any).tenantId;
+  const userId = (socket as any).userId;
+  logger.info({ socketId: socket.id, tenantId, userId }, `Socket client connected`);
 
-  // Real-time clients can join rooms mapped by their Tenant ID natively!
-  socket.on('join_tenant', (tenantId: string) => {
+  // Auto-join tenant room on connection
+  socket.join(tenantId);
+  logger.info({ socketId: socket.id, tenantId }, `Socket client auto-joined tenant workspace`);
+
+  // Allow joining additional rooms (validates tenant ownership)
+  socket.on('join_tenant', (requestedTenantId: string) => {
+    if (requestedTenantId !== tenantId) {
+      logger.warn({ socketId: socket.id, requested: requestedTenantId, actual: tenantId }, `Socket client rejected: tenant mismatch`);
+      socket.emit('error', { message: 'Unauthorized: tenant mismatch' });
+      return;
+    }
     socket.join(tenantId);
     logger.info({ socketId: socket.id, tenantId }, `Socket client joined tenant workspace`);
   });
@@ -153,11 +229,11 @@ app.use('/api', apiRateLimiter);
 // Main SaaS External Proxy Interface
 app.use('/api/whatsapp', whatsappRouter);
 
+// WhatsApp Chat/Contacts/Messages API
+app.use('/api/whatsapp', whatsappChatRouter);
+
 // Workspace Management Interface
 app.use('/api/workspaces', workspacesRouter);
-
-// Admin Panel (DLQ replay, queue management)
-app.use('/admin', adminRouter);
 
 // Conversation & Message API
 app.use('/api/conversations', conversationsRouter);
@@ -177,17 +253,8 @@ app.use('/api/ai', aiBridgeRouter);
 // User Credentials Management
 app.use('/api/credentials', credentialsRouter);
 
-// Workflow Management
-app.use('/api/workflows', workflowRouter);
-
-// API Key Management
-app.use('/api/api-keys', apiKeyRouter);
-
 // Team Management
 app.use('/api/team', teamRouter);
-
-// Event / Audit Log (read-only)
-app.use('/api/events', eventRouter);
 
 // Mount standard Unified Routers
 app.use('/gateway', gatewayRouter);

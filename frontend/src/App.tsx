@@ -13,13 +13,8 @@ import { LeadsPage } from "./pages/LeadsPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { BillingPage } from "./pages/BillingPage";
-import { OnboardingPage } from "./pages/OnboardingPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { CampaignsPage } from "./pages/CampaignsPage";
-import { ContactsPage } from "./pages/ContactsPage";
-import { ReportsPage } from "./pages/ReportsPage";
 import { TeamPage } from "./pages/TeamPage";
-import { IntegrationsPage } from "./pages/IntegrationsPage";
 
 export default function App() {
   useEffect(() => {
@@ -45,13 +40,8 @@ export default function App() {
               <Route path="/conversations" element={<ConversationsPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/billing" element={<BillingPage />} />
-              <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/campaigns" element={<CampaignsPage />} />
-              <Route path="/contacts" element={<ContactsPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
               <Route path="/team" element={<TeamPage />} />
-              <Route path="/integrations" element={<IntegrationsPage />} />
             </Route>
           </Route>
 
