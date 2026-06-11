@@ -65,7 +65,7 @@
 | **Frontend SDK** | `@clerk/clerk-react` v5.61.6 |
 | **Webhook route** | `src/routes/webhooks.ts` (`POST /api/webhooks/clerk`) |
 | **Webhook lib** | `svix` v1.94.0 (signature verification) |
-| **Auth middleware** | `src/middleware/auth.ts` — supports Clerk JWT + custom JWT + API key + dev bypass |
+| **Auth middleware** | `src/middleware/auth.ts` — strict fail-closed enforcement of Clerk JWTs |
 | **Status** | ACTIVE |
 
 **Configuration env vars:**
@@ -86,32 +86,18 @@
 |--------|-------|
 | **Purpose** | AI-powered message responses (fallback in the 13-step worker pipeline) |
 | **Orchestrator** | `src/ai/orchestrator.ts` |
-| **Provider registry** | `src/ai/providers/index.ts` (14 providers) |
-| **Provider base** | `src/ai/providers/types.ts` (`AIProvider` interface with `validateKey()`) |
-| **Key validation** | `src/ai/providers/` — each provider implements `validateKey()` for API key verification |
+| **Provider registry** | Unified OpenRouter Factory (`OpenRouterService.ts`) |
 | **Endpoints** | `src/AiInteg/endpoints.ts` — `/ai/chat`, `/ai/validate` |
 | **Status** | ACTIVE |
 
-**AI providers (all 14):**
+**AI providers:**
+The system has been consolidated to exclusively use OpenRouter for AI models, eliminating the need for 13 separate provider SDKs.
 
-| Provider | Default Model | Base URL | Env Key | File |
-|----------|---------------|----------|---------|------|
-| Groq | `llama-3.1-8b-instant` | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` | `providers/groq.ts` |
-| OpenAI | `gpt-4o-mini` | (OpenAI default) | `OPENAI_API_KEY` | `providers/openai.ts` |
-| Google Gemini | `gemini-2.0-flash` | `https://generativelanguage.googleapis.com/v1beta` | `GEMINI_API_KEY` | `providers/gemini.ts` |
-| Anthropic | `claude-sonnet-4-20250514` | `https://api.anthropic.com/v1` | `ANTHROPIC_API_KEY` | `providers/anthropic.ts` |
-| Mistral | `mistral-small-latest` | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` | `providers/mistral.ts` |
-| Cohere | `command-r` | `https://api.cohere.com/v2` | `COHERE_API_KEY` | `providers/cohere.ts` |
-| xAI | `grok-2-latest` | `https://api.x.ai/v1` | `XAI_API_KEY` | `providers/xai.ts` |
-| Together | `llama-3-70b-chat-hf` | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` | `providers/together.ts` |
-| Fireworks | `llama-v3p1-70b-instruct` | `https://api.fireworks.ai/inference/v1` | `FIREWORKS_API_KEY` | `providers/fireworks.ts` |
-| AWS Bedrock | `claude-3-5-sonnet-20241022-v2:0` | — | `AWS_BEDROCK_KEY` | `providers/bedrock.ts` |
-| Ollama | `llama3.1` | `http://localhost:11434/v1` | `OLLAMA_API_KEY` | `providers/ollama.ts` |
-| OpenRouter | `llama-3-8b-instruct` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | `providers/openrouter.ts` |
-| Cerebras | `llama3.1-8b` | `https://api.cerebras.ai/v1` | `CEREBRAS_API_KEY` | `providers/cerebras.ts` |
-| DeepSeek | `deepseek-chat` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` | `providers/deepseek.ts` |
+| Provider | Default Model | Base URL | Env Key |
+|----------|---------------|----------|---------|
+| OpenRouter | `anthropic/claude-3-5-sonnet:beta` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
 
-**Config resolution priority:** Bot config (in DB `Bot.config`) > User credential (`UserCredential` table) > Environment variables > Defaults (Groq)
+**Config resolution priority:** Bot config (`Bot.config.apiKey`) > Client Vault (`whatsie_vault` localStorage) > Environment variables
 
 ### Redis
 

@@ -145,10 +145,10 @@ export default router;
 
 ### Authentication Middleware (`auth.ts`)
 
-- `authenticateToken` — dual-mode: supports API key (X-API-KEY header), Bearer JWT, and Clerk JWT
+- `authenticateToken` — dual-mode: supports Clerk JWT and system-issued API keys.
 - Extends Express Request: `interface AuthenticatedRequest extends Request { user?: { id, tenantId, role } }`
-- Dev bypass via `DEV_AUTH_BYPASS=true` environment variable
-- API keys hashed with SHA-256 before database lookup
+- Strict fail-closed verification. No dev bypasses permitted.
+- API keys hashed with SHA-256 before database lookup.
 
 ### Tenant Middleware (`tenant.ts`)
 
@@ -177,11 +177,11 @@ All errors follow the structure defined in `errors/codes.ts`:
 - Global singleton with hot-reload guard: `globalThis.__prisma ?? new PrismaClient()`
 - Only stores on global in non-production to prevent connection pool exhaustion
 
-### RLS Integration
+### Tenant Global Middleware Integration
 
-- Extended PrismaClient sets `app.current_tenant_id` via `set_config()` before every query
-- Uses `AsyncLocalStorage` from `tenantContext` to get current tenant
-- `set_config('app.current_tenant_id', tenantId, true)` — local to transaction, connection-pool safe
+- Extended PrismaClient intercepts queries for `TENANT_MODELS` and automatically applies `{ where: { tenantId } }` or `{ data: { tenantId } }`.
+- Uses `AsyncLocalStorage` from `tenantContext` to securely resolve the current tenant.
+- Completely abstracts tenant filtering from business logic, throwing `CRITICAL_SECURITY_ALERT` if a tenantId is missing.
 
 ### Query Patterns
 

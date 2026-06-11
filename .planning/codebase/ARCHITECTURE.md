@@ -85,14 +85,17 @@ Inbound Webhook
 2. **Intent classification** — regex/keyword matching (HUMAN_ESCALATION, PRICING, OPT_OUT, INTERESTED)
 3. **Workflow trigger** — high-confidence intent starts a new workflow
 4. **Rule engine** — hard rules bypass AI (escalation → transfer, pricing → canned response, opt-out → mark lead)
-5. **AI Orchestrator** — fallback to LLM (14 providers: OpenAI, Anthropic, Gemini, Groq, Mistral, Cohere, xAI, Together, Fireworks, Bedrock, Ollama, OpenRouter, Cerebras, DeepSeek)
+5. **AI Orchestrator** — fallback to LLM (Unified OpenRouter Factory for Claude, Llama, etc., replacing legacy direct provider SDKs).
 
 ## Multi-Tenant Isolation
 
-- **Application-level**: All queries include `tenantId` filter
-- **Row-Level Security**: PostgreSQL RLS is implemented via Prisma `$extends` (`src/db/prisma.ts:32-44`). Before every query, `set_config('app.current_tenant_id', <id>, true)` is executed from AsyncLocalStorage context
-- **Tenant context**: Propagated via `AsyncLocalStorage` in `src/middleware/tenant.ts`
-- **Socket.IO**: Connections auto-join `tenantId` room; `join_tenant` event validates tenant ownership
+- **ORM-level**: Global Prisma Extension (`src/db/prisma.ts`) intercepts all queries against `TENANT_MODELS` and automatically injects `{ where: { tenantId } }` or `{ data: { tenantId } }` via `AsyncLocalStorage` context.
+- **Fail-Closed Boundary**: Queries attempting to execute without a `tenantId` in context will throw a `CRITICAL_SECURITY_ALERT` exception.
+- **Tenant context**: Propagated via `AsyncLocalStorage` in `src/middleware/tenant.ts`.
+- **Socket.IO**: Connections auto-join `tenantId` room; `join_tenant` event validates tenant ownership.
+
+## Outbox Pattern
+Messages created during the processing pipeline default to a `pending` status. Only after the `ResponseRouter` successfully receives an HTTP 200 OK from the Evolution API will the system update the record to `sent`. This prevents false-positive billing or analytics metrics on network failures.
 
 ## Authentication Architecture
 
@@ -100,7 +103,7 @@ Three strategies in priority order (`src/middleware/auth.ts`):
 
 | Strategy | Trigger | Resolution |
 |----------|---------|------------|
-| Dev bypass | `DEV_AUTH_BYPASS=true` | Auto-assigns `DEFAULT_TENANT_ID` as admin |
+| Dev bypass | `DEV_AUTH_BYPASS=true` | Uses mocked `dev-user-001` obj directly to avoid Prisma crash on missing `User.name` schema sync |
 | API Key | `X-API-KEY` header | SHA-256 hash lookup in `ApiKey` table |
 | Clerk JWT | `req.auth.userId` (upstream middleware) | Lookup user by `clerkId` |
 | Bearer JWT | `Authorization: Bearer <token>` | `jwt.verify()` with `JWT_SECRET` |
@@ -120,10 +123,8 @@ Socket.IO uses the same strategies via handshake auth/query.
 
 ## AI Provider Architecture
 
-- **Orchestrator** (`src/ai/orchestrator.ts`, 218 lines): Single-file handling provider resolution, client caching, message formatting, usage recording
-- **14 providers** in `src/ai/providers/`: openai, anthropic, gemini, groq, mistral, cohere, xai, together, fireworks, bedrock, ollama, openrouter, cerebras, deepseek
-- **Provider selection**: Resolved from bot config → user credentials → environment variables
-- **Client caching**: Module-level singletons (`openaiClient`, `googleAiClient`) with provider string match invalidation
+- **Orchestrator** (`src/ai/orchestrator.ts` & `OpenRouterService.ts`): Unified API gateway connecting directly to OpenRouter, drastically reducing SDK dependencies.
+- **Provider selection**: Resolved from bot config → user credentials → OpenRouter API key.
 
 ## Credential Storage
 

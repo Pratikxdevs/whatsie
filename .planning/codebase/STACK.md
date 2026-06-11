@@ -56,8 +56,11 @@
 - Outbound WhatsApp: 1 msg/sec via BullMQ rate limiter (`src/rateLimiter.ts`, `sendWithRateLimit`)
 - Implementations: express-rate-limit v7.5.0 + rate-limit-redis v4.3.1 (Redis-backed store)
 
-**Security:**
-- Helmet v8.2.0 (HTTP security headers)
+**Security (Zero-Trust Enabled):**
+- Strict Clerk JWT fail-closed perimeter (no `DEV_AUTH_BYPASS`).
+- Global Prisma Extension enforces `tenantId` Row-Level Security (RLS) on all queries.
+- AES-256-GCM encryption enforced on all API keys (32-byte key minimum).
+- Helmet v8.2.0 (HTTP security headers, strict CSP without 'unsafe-inline')
 - bcryptjs v3.0.3 (password hashing)
 - jsonwebtoken v9.0.3 (JWT)
 - DOMPurify v3.4.5 (XSS sanitization)
@@ -84,8 +87,6 @@
 | helmet | ^8.2.0 | Security headers |
 | express-rate-limit | ^7.5.0 | Rate limiting |
 | rate-limit-redis | ^4.3.1 | Redis-backed rate limit store |
-| @google/generative-ai | ^0.24.1 | Google Gemini AI SDK |
-| openai | ^6.34.0 | OpenAI SDK (also for OpenAI-compatible APIs) |
 | module-alias | ^2.3.4 | Path aliases |
 | libphonenumber-js | ^1.13.3 | Phone number parsing (E.164) |
 
