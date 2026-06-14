@@ -32,13 +32,6 @@ import { getAuth, clerkClient } from '@clerk/express';
  */
 export const authenticateToken = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const authState = getAuth(req);
-  
-  // Debug log auth state
-  logger.info({
-    authUserId: authState?.userId,
-    hasAuthHeader: !!req.headers.authorization,
-    url: req.originalUrl || req.url
-  }, 'authenticateToken call debug');
 
   // Strategy 1: API Key header
   const apiKey = req.headers['x-api-key'] as string | undefined;
