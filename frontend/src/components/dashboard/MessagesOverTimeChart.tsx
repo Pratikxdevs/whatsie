@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { Loader2 } from "lucide-react";
 import { analyticsApi } from "../../services/api";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MessagesOverTimeChart() {
   const [data, setData] = useState<{ day: string; inbound: number; outbound: number }[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     analyticsApi.getMessageVolume(7)
       .then((rows: { date: string; inbound: number; outbound: number }[]) => {
         const mapped = rows.map((row) => {
@@ -20,8 +23,32 @@ export function MessagesOverTimeChart() {
         });
         setData(mapped);
       })
-      .catch(() => {});
+      .catch((err) => console.error("Chart load failed:", err))
+      .finally(() => setLoading(false));
   }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-zinc-900 border border-white/5 rounded-xl p-4 animate-pulse min-h-[250px] flex flex-col justify-between">
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-4 w-24 bg-zinc-800 rounded" />
+          <div className="h-4 w-12 bg-zinc-800 rounded" />
+        </div>
+        <div className="flex-1 w-full bg-zinc-850 rounded-md flex items-center justify-center">
+          <Loader2 className="w-6 h-6 text-primary animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-white/5 rounded-xl p-4 flex flex-col items-center justify-center min-h-[250px]">
+        <h3 className="text-[13px] font-semibold text-zinc-200 mb-2 align-self-start self-start">Messages (7d)</h3>
+        <span className="text-zinc-500 text-xs font-sans mt-8">No message traffic recorded in the last 7 days.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-zinc-900 border border-white/5 rounded-xl p-4">

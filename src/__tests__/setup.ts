@@ -1,3 +1,4 @@
+/// <reference types="vitest/globals" />
 // Test environment variables
 process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only';
 process.env.GATEWAY_SECURITY_TOKEN = 'test-gateway-token';
@@ -52,7 +53,37 @@ const mockPrisma = {
 
 vi.mock('../db/prisma', () => ({
   prisma: mockPrisma,
+  prismaUnfiltered: mockPrisma,
 }));
+
+// Mock Clerk — injects a fake req.auth for downstream middleware
+vi.mock('@clerk/express', () => ({
+  clerkMiddleware: () => (req: any, _res: any, next: any) => {
+    req.auth = { userId: 'clerk-test-user-id' };
+    next();
+  },
+  verifyToken: vi.fn().mockResolvedValue({ sub: 'clerk-test-user-id' }),
+  requireAuth: () => (_req: any, _res: any, next: any) => next(),
+}));
+
+// Mock authenticateToken — injects a standard test user so route tests don't need Clerk/DB
+vi.mock('../middleware/auth', async (importOriginal) => {
+  const actual: any = await importOriginal();
+  return {
+    ...actual,
+    authenticateToken: (req: any, res: any, next: any) => {
+      if (!req.headers.authorization && !req.headers['x-api-key'] && !req.auth) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      req.user = {
+        id: 'user-test-uuid-0000-0000-000000000001',
+        tenantId: 'tenant-test-uuid-0000-0000-000000000001',
+        role: 'admin',
+      };
+      next();
+    },
+  };
+});
 
 // Redis mock
 const redisStore = new Map<string, string>();
@@ -82,6 +113,7 @@ vi.mock('ioredis', () => {
     keys: vi.fn().mockResolvedValue([]),
     ping: vi.fn().mockResolvedValue('PONG'),
     quit: vi.fn().mockResolvedValue('OK'),
+    call: vi.fn().mockResolvedValue('OK'),
     on: vi.fn(),
     connect: vi.fn().mockResolvedValue(undefined),
   }));
@@ -101,14 +133,22 @@ vi.mock('bullmq', () => {
     on: vi.fn(),
   };
 
-  const mockWorker = vi.fn().mockImplementation((_name: string, _processor: Function) => ({
-    on: vi.fn(),
-    close: vi.fn().mockResolvedValue(undefined),
-  }));
+  const mockWorker = vi.fn().mockImplementation(function(_name: string, _processor: Function) {
+    return {
+      on: vi.fn(),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+  });
 
   return {
     Queue: vi.fn().mockImplementation(() => mockQueue),
     Worker: mockWorker,
+    QueueEvents: vi.fn().mockImplementation(function() {
+      return {
+        on: vi.fn(),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    }),
   };
 });
 

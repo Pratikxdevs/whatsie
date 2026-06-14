@@ -32,7 +32,7 @@ export function SettingsPage() {
         <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/80 to-transparent" />
         <div className="relative z-20 w-full">
         </div>
-        <div className="relative z-10 w-full px-6 md:px-12 lg:px-16 flex-1 flex flex-col justify-end pb-8">
+        <div className="relative z-10 w-full page-padding flex-1 flex flex-col justify-end pb-8">
           <h1 className="text-white font-semibold leading-[0.92] tracking-[-0.02em]" style={{ fontSize: "clamp(52px, 9vw, 108px)", lineHeight: 0.92 }}>
             SETTINGS
           </h1>
@@ -43,7 +43,7 @@ export function SettingsPage() {
       </div>
 
       {/* Main Content */}
-      <div className="w-full px-6 md:px-12 lg:px-16 py-6 md:py-8">
+      <div className="w-full page-padding py-6 md:py-8">
         <div className="flex gap-4">
           {/* Sidebar Tabs */}
           <div className="w-56 flex-shrink-0">

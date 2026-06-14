@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { UserPlus, Trash2, ChevronDown, X } from "lucide-react";
+import { UserPlus, Trash2, X } from "lucide-react";
 import { teamApi } from "../../services/api";
 import { toast } from "sonner";
 
@@ -89,7 +89,7 @@ export function TeamTab() {
             <div key={member.id} className="flex items-center justify-between p-4 bg-zinc-900 border border-white/5 rounded-xl">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-sm font-medium text-zinc-300">
-                  {member.name.split(" ").map((n) => n[0]).join("")}
+                  {member.name.split(" ").map((n: string) => n[0]).join("")}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-white">{member.name}</p>

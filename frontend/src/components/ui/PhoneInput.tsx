@@ -53,31 +53,6 @@ for (const c of COUNTRIES) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Phone formatting helper
-// ---------------------------------------------------------------------------
-function formatNational(input: string, country?: CountryCode): string {
-  if (!input) return '';
-  // If starts with +, try to parse internationally
-  if (input.startsWith('+')) {
-    const parsed = parsePhoneNumberFromString(input);
-    if (parsed) {
-      // Strip leading trunk prefix (0) — E.164 never has it
-      const national = parsed.formatNational();
-      return national.replace(/^0\s*/, '');
-    }
-    return input;
-  }
-  // Otherwise try with default country
-  if (country) {
-    const parsed = parsePhoneNumberFromString(input, country);
-    if (parsed) {
-      const national = parsed.formatNational();
-      return national.replace(/^0\s*/, '');
-    }
-  }
-  return input;
-}
 
 // ---------------------------------------------------------------------------
 // Props

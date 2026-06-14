@@ -11,6 +11,7 @@ export interface SessionState {
   conversationState?: 'idle' | 'in_flow' | 'waiting_input';
   variables?: Record<string, any>;
   lastMessageAt?: string;
+  sessionSummary?: string;
 }
 
 export class SessionManager {
@@ -27,7 +28,7 @@ export class SessionManager {
   static async getContext(tenantId: string, userId: string): Promise<ChatMessage[]> {
     const key = `context:${tenantId}:${userId}`;
     const rawMessages = await redisConnection.lrange(key, 0, 9);
-    return rawMessages.map(item => JSON.parse(item) as ChatMessage).reverse();
+    return rawMessages.map((item: string) => JSON.parse(item) as ChatMessage).reverse();
   }
 
   // --- WORKFLOW STATE MANAGEMENT ---

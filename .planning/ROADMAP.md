@@ -526,3 +526,63 @@
 - [ ] E2E flow works: create bot → scan QR → receive message → AI responds → message sent
 
 **Plans:** TBD (to be determined during planning)
+
+---
+
+## Phase 25: Whatsie AI Engine Integration
+**Goal:** Eliminate hardcoded models and pricing with dynamic OpenRouter metadata and live brand assets.
+
+**Why:** Whatsie needs to dynamically scale its supported AI models and present clear, up-to-date pricing to users without manually updating codebase maps when providers change.
+
+**Scope:**
+- Implement dynamic OpenRouter verification endpoint `POST /api/ai/verify` to validate keys and fetch/normalize models in parallel.
+- Create `/frontend/src/lib/brand-resolver.ts` to map provider slugs to official domains for logo CDN integration.
+- Implement LocalStorage `whatsie_vault` key vault for client credentials with auto-completing dropdowns and status health cards.
+- Design searchable Radix Command model selector grouped by provider with interactive spec sheet drawer.
+- Add robust rate limiting (429) cool-down visual timers and zero-balance wallet warnings.
+
+**Success Criteria:**
+- [ ] Backend endpoint `/api/ai/verify` successfully returns credit balance and normalized model lists.
+- [ ] Brand resolver returns img.logo.dev domains with icon.horse favicon fallbacks.
+- [ ] Frontend saves validated credentials in key vault and renders selection lists.
+- [ ] Command Selector groups and filters models dynamically.
+- [ ] Zero-balance and rate limit errors show correct UX feedback without silent failures.
+
+**Plans:** TBD
+
+---
+
+## Phase 26: Conversations Page & Multi-Bot Chat Rebuild
+**Goal:** Completely decouple conversation fetching from internal CRM DB logic, enabling real-time aggregation across all connected bots simultaneously.
+
+**Why:** The previous architecture queried `prisma.bot.findFirst`, forcing all texts and media uploads to route to a single bot, destroying multi-tenant capabilities.
+
+**Scope:**
+- Backend `/chats` route iterates across all bots to aggregate a unified inbox.
+- Inject `sessionName` into all chats so frontend can route payloads precisely.
+- Rebuild media uploads and message routing to target the exact Evolution API session.
+
+**Success Criteria:**
+- [x] Multi-bot chat fetching works instantly.
+- [x] Frontend successfully displays visual indicator pills for bot names.
+- [x] Media uploads strictly hit Evolution API instance without crashing the DB.
+
+---
+
+## Phase 27: Zero-Trust Production Architecture Mega-Refactor
+**Goal:** Strip out all developmental bypasses, completely secure cryptographic keys, harden the tenant perimeter, decouple the AI integration to a single OpenRouter factory, and implement the high-end Bento Grid UI.
+
+**Why:** The codebase is littered with `DEV_AUTH_BYPASS` and legacy platform endpoints that present critical security liabilities for a production deployment.
+
+**Scope:**
+- Security: Restore Clerk JWT verification, implement Tenant DB isolation, and AES-256-GCM encryption.
+- AI: Build dynamic OpenRouter factory with localStorage obfuscation.
+- UI: Bento grid scaling, Shadcn settings slide-overs, and maximum density UI mapping.
+- Debt: Ruthless deletion of Telegram/Slack/Discord logic and all `as any` casting.
+
+**Success Criteria:**
+- [ ] Backend drops all connections lacking Clerk JWTs or `tenantId`.
+- [ ] API keys encrypted at rest.
+- [ ] All UI matches the requested Bento Grid layout.
+
+**Plans:** See `.planning/phases/27-zero-trust-architecture/PLAN.md`

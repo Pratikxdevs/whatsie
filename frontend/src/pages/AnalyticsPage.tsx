@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DateRangePicker } from '../components/analytics/DateRangePicker';
 import { MessagingMetrics } from '../components/analytics/MessagingMetrics';
 import { LeadMetrics } from '../components/analytics/LeadMetrics';
 import { AIPerformance } from '../components/analytics/AIPerformance';
 import { BotPerformance } from '../components/analytics/BotPerformance';
-import { Download, Filter } from 'lucide-react';
+import { Download, Filter, Loader2 } from 'lucide-react';
 import heroBg from '../assets/ChatGPT Image Apr 6, 2026, 02_58_13 AM.png';
+import { NoBotGate } from '../components/ui/NoBotGate';
+import { botApi } from '../services/api';
 
-type DateRange = '7d' | '30d' | '90d';
+type DateRange = '7d' | '30d' | '90d' | 'custom';
 type Tab = 'messaging' | 'leads' | 'ai' | 'bots';
 
 const tabs: { label: string; value: Tab }[] = [
@@ -20,6 +22,32 @@ const tabs: { label: string; value: Tab }[] = [
 export function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('messaging');
   const [dateRange, setDateRange] = useState<DateRange>('30d');
+  const [hasBots, setHasBots] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    botApi.getWorkspaces()
+      .then((bots: any[]) => setHasBots(Array.isArray(bots) && bots.length > 0))
+      .catch(() => setHasBots(false));
+  }, []);
+
+  if (hasBots === null) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-zinc-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (hasBots === false) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-200">
+        <NoBotGate
+          title="Connect a bot to view analytics"
+          description="Analytics are generated from your WhatsApp bot activity. Connect your first bot to see performance metrics here."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-white/10 overflow-x-hidden">
@@ -30,7 +58,7 @@ export function AnalyticsPage() {
         <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/80 to-transparent" />
         <div className="relative z-20 w-full">
         </div>
-        <div className="relative z-10 w-full px-6 md:px-12 lg:px-16 flex-1 flex flex-col justify-end pb-8">
+        <div className="relative z-10 w-full page-padding flex-1 flex flex-col justify-end pb-8">
           <h1 className="text-white font-semibold leading-[0.92] tracking-[-0.02em]" style={{ fontSize: 'clamp(52px, 9vw, 108px)', lineHeight: 0.92 }}>
             ANALYTICS
           </h1>
@@ -41,7 +69,7 @@ export function AnalyticsPage() {
       </div>
 
       {/* Content */}
-      <div className="w-full px-6 md:px-12 lg:px-16 py-6 md:py-8 space-y-6">
+      <div className="w-full page-padding py-6 md:py-8 space-y-6">
         {/* Controls */}
         <div className="flex items-center justify-between">
           <div className="flex gap-1 bg-zinc-900 border border-white/10 rounded-lg p-1">

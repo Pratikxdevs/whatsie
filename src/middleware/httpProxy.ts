@@ -227,7 +227,10 @@ export function createProxiedClient(baseConfig: Omit<AxiosRequestConfig, 'proxy'
       if (cached) {
         logger.debug({ domain, url: config.url }, `${logPrefix} Cache hit`);
         // Return cached response by throwing a cancel with cached data
-        (config as any).__cached = cached;
+        const cancelErr = new axios.Cancel('Cache hit');
+        (cancelErr as any).__cached = cached;
+        (cancelErr as any).config = config;
+        return Promise.reject(cancelErr);
       }
       (config as any).__cacheKey = cacheKey;
     }

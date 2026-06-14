@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
-import { MessageSquare, ArrowUpRight, ArrowDownLeft, GitBranch, StickyNote, ChevronRight, Plus, Trash2, Brain, Sparkles, Loader2 } from 'lucide-react';
+import { MessageSquare, ArrowUpRight, ArrowDownLeft, GitBranch, StickyNote, ChevronRight, Plus, Trash2, Brain, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { leadApi } from '../../services/api';
 import { PhoneInput } from '../ui/PhoneInput';
@@ -39,7 +39,6 @@ export function LeadDetailTabs({ lead, onStatusChange, onLeadUpdated }: LeadDeta
   const [newNote, setNewNote] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editedLead, setEditedLead] = useState({ name: lead.name, phone: lead.phone || '', email: lead.email || '' });
-  const [saving, setSaving] = useState(false);
   const [newAttrKey, setNewAttrKey] = useState('');
   const [newAttrValue, setNewAttrValue] = useState('');
   const [attributes, setAttributes] = useState<Record<string, unknown>>({ ...(lead.attributes || {}) });
@@ -47,9 +46,9 @@ export function LeadDetailTabs({ lead, onStatusChange, onLeadUpdated }: LeadDeta
   const [timelineFilter, setTimelineFilter] = useState<string | null>(null);
 
   const timeline: any[] = [];
-  const aiScore = null;
-  const bot = null;
-  const conversation = null;
+  const [aiScore] = useState<{ score: number; reasoning: string; recommendations: string[] } | null>(null);
+  const [bot] = useState<{ name: string } | null>(null);
+  const [conversation] = useState<{ platform: string; status: string } | null>(null);
   const colors = STATUS_COLORS[lead.status] || STATUS_COLORS.new;
 
   const filteredTimeline = timelineFilter

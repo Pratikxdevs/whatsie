@@ -13,9 +13,9 @@
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
 import { generateAiResponse } from '../ai/orchestrator';
+import { runStructuralizer } from '../ai/structuralizer';
 import { ResponseRouter } from '../router/index';
 import { NormalizedMessage } from '../normalizer/types';
-import { io } from '../index';
 
 export interface BridgeResult {
   success: boolean;
@@ -94,7 +94,8 @@ export async function processInboundMessage(
 
     // Emit real-time event
     try {
-      io.to(msg.tenantId).emit('new_message', {
+      const { io: socketIo } = await import('../index');
+      socketIo.to(msg.tenantId).emit('new_message', {
         conversationId: conversation.id,
         message: {
           id: inboundMsg.id,
@@ -121,17 +122,47 @@ export async function processInboundMessage(
       aiResponse = "I'm having trouble processing your request. Please try again.";
     }
 
-    // ── Step 5: Send Response via Platform ───────────────────────────
+    // ── Step 5: Send Response via Platform (with retry) ──────────────
     let sentToPlatform = false;
     if (aiResponse) {
+      const tryDispatch = async () => ResponseRouter.dispatch(msg, conversation.id, aiResponse!);
       try {
-        const result = await ResponseRouter.dispatch(msg, conversation.id, aiResponse);
+        const result = await tryDispatch();
         sentToPlatform = result.success;
         log.info({ messageId: result.messageId }, 'Response dispatched to platform');
-      } catch (err: any) {
-        log.error({ err: err.message }, 'Failed to dispatch response');
+      } catch (firstErr: any) {
+        log.warn({ err: firstErr.message }, 'First dispatch attempt failed — retrying in 2s');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+          const result = await tryDispatch();
+          sentToPlatform = result.success;
+          log.info({ messageId: result.messageId }, 'Response dispatched to platform (retry)');
+        } catch (finalErr: any) {
+          log.error({ err: finalErr.message }, 'Failed to dispatch response after retry');
+          // Mark outbound message as failed in DB
+          try {
+            await prisma.message.updateMany({
+              where: { conversationId: conversation.id, direction: 'out', content: aiResponse! },
+              data: { metadata: { platform: msg.platform, sendFailed: true } as any },
+            });
+          } catch (_) {}
+          // Notify dashboard via Socket.IO
+          try {
+            const { io: socketIo } = await import('../index');
+            socketIo.to(msg.tenantId).emit('message_send_failed', {
+              conversationId: conversation.id,
+              leadId: lead.id,
+              error: finalErr.message,
+            });
+          } catch (_) {}
+        }
       }
     }
+
+    // ── Step 6: Trigger Background Structuralizer ────────────────────
+    runStructuralizer(msg.tenantId, lead.id, conversation.id).catch(err => {
+      log.error({ err: err.message }, 'Background structuralizer failed');
+    });
 
     return {
       success: true,

@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { X, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
-import { io as ioClient, Socket } from 'socket.io-client';
 import type { AiEngine } from './types';
 import { ProviderAuth } from '../ProviderAuth';
-import { botApi, getSocketUrl, getSocketAuthToken } from '../../services/api';
+import { botApi } from '../../services/api';
+import { socketManager } from '../../services/socketManager';
 import { useAuth } from '../../contexts/AuthContext';
 
 type Step = 'config' | 'connect';
@@ -16,8 +16,9 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
   const { user } = useAuth();
   const [step, setStep] = useState<Step>('config');
   const [name, setName] = useState('');
-  const [aiEngine, setAiEngine] = useState<AiEngine>('groq');
+  const [aiEngine, setAiEngine] = useState<AiEngine>('openrouter');
   const [apiKey, setApiKey] = useState('');
+  const [model, setModel] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(1024);
@@ -34,25 +35,22 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
   }, []);
 
-  // Socket.IO — listen for real-time bot_status_change events
+  // Socket.IO — listen for real-time bot_status_change events (singleton)
   useEffect(() => {
     if (!createdBotId || !user?.tenantId || connectStatus === 'idle' || connectStatus === 'connected' || connectStatus === 'error') return;
 
-    let cancelled = false;
-    (async () => {
-      const token = await getSocketAuthToken();
-      if (cancelled) return;
-      const socket: Socket = ioClient(getSocketUrl(), { auth: { token } });
-      socket.on('bot_status_change', ({ botId, status }: { botId: string; status: string }) => {
-        if (botId === createdBotId && status === 'connected') {
-          cleanupTimers();
-          setConnectStatus('connected');
-          onComplete();
-        }
-      });
-      return () => { socket.disconnect(); };
-    })();
-    return () => { cancelled = true; };
+    socketManager.connect(user.tenantId);
+
+    const handleStatusChange = ({ botId, status }: { botId: string; status: string }) => {
+      if (botId === createdBotId && status === 'connected') {
+        cleanupTimers();
+        setConnectStatus('connected');
+        onComplete();
+      }
+    };
+
+    socketManager.on('bot_status_change', handleStatusChange);
+    return () => { socketManager.off('bot_status_change', handleStatusChange); };
   }, [createdBotId, connectStatus, onComplete, user?.tenantId]);
 
   if (!isOpen) return null;
@@ -60,7 +58,7 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
   const steps: Step[] = ['config', 'connect'];
   const currentIdx = steps.indexOf(step);
 
-  const canNext = step === 'config' ? name.trim().length > 0 && (apiKey.trim().length > 0 || aiEngine === 'ollama') : true;
+  const canNext = step === 'config' ? name.trim().length > 0 && apiKey.trim().length > 0 : true;
 
   const handleNext = async () => {
     cancelledRef.current = false;
@@ -76,6 +74,7 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
           system_prompt: systemPrompt || undefined,
           temperature,
           max_tokens: maxTokens,
+          model: model || undefined,
         });
         if (cancelledRef.current) return;
         setCreatedBotId(workspace.id);
@@ -152,7 +151,7 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
     }
     setStep('config');
     setName('');
-    setAiEngine('groq');
+    setAiEngine('openrouter');
     setApiKey('');
     setSystemPrompt('');
     setTemperature(0.7);
@@ -244,6 +243,8 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
                 onProviderChange={setAiEngine}
                 onKeyChange={setApiKey}
                 showModels
+                selectedModel={model}
+                onModelChange={setModel}
               />
               <div className="grid grid-cols-2 gap-3">
                 <div>

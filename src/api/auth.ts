@@ -39,8 +39,7 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
         data: {
           email,
           passwordHash,
-          tenantId: tenant.id,
-          role: 'admin',
+          tenantId: tenant.id
         }
       });
 
@@ -83,8 +82,7 @@ router.post('/login', validateBody(loginSchema), async (req: Request, res: Respo
     const accessToken = jwt.sign(
       {
         id: user.id,
-        tenantId: user.tenantId,
-        role: user.role
+        tenantId: user.tenantId
       },
       jwtSecret,
       { expiresIn: '1h' }
@@ -155,8 +153,7 @@ router.post('/refresh', validateBody(refreshSchema), async (req: Request, res: R
     const newAccessToken = jwt.sign(
       {
         id: matchedToken.user.id,
-        tenantId: matchedToken.user.tenantId,
-        role: matchedToken.user.role
+        tenantId: matchedToken.user.tenantId
       },
       jwtSecret,
       { expiresIn: '1h' }

@@ -6,6 +6,7 @@
  */
 import axios from 'axios';
 import { errorLog } from './errorLog';
+import { clerkBridge } from '../lib/clerk-bridge';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -19,17 +20,9 @@ const api = axios.create({
 
 // Attach Clerk session token to every request when available
 const authInterceptor = async (config: any) => {
-  try {
-    // @ts-expect-error — Clerk is injected globally by ClerkProvider
-    const clerk = window.__clerk;
-    if (clerk?.session) {
-      const token = await clerk.session.getToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-  } catch {
-    // No Clerk session — fall through
+  const token = await clerkBridge.getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 };
@@ -38,17 +31,31 @@ api.interceptors.request.use(authInterceptor);
 // Log all API errors automatically
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error?.response?.status;
-    if (status === 401 || status === 403) {
+    const endpoint = error?.config?.url || '';
+
+    if (!error.response) {
+      // Network error — backend unreachable
       import('sonner').then(({ toast }) => {
-        toast.error('Add Bot: You need a connected bot or valid session to perform this action.');
+        toast.error('Cannot reach the server. Check your connection.');
       });
-      if (window.location.pathname !== '/bots') {
-        window.location.href = '/bots';
+    } else if ((status === 401 || status === 403) && !endpoint.includes('/ai/verify')) {
+      // Session expired or permission denied — sign out via bridge and redirect
+      await clerkBridge.signOut();
+      import('sonner').then(({ toast }) => {
+        toast.info('Session expired or invalid — please sign in again');
+      });
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
       }
+    } else if (status && status >= 500) {
+      // Server error — inform, don't redirect
+      import('sonner').then(({ toast }) => {
+        toast.error('Server error — please try again in a moment.');
+      });
     }
-    const endpoint = error?.config?.url || 'unknown';
+
     errorLog.logApiError(error, endpoint);
     return Promise.reject(error);
   }
@@ -87,7 +94,7 @@ export const botApi = {
     return res.data.workspaces ?? [];
   },
 
-  createWorkspace: async (name: string, opts?: { system_prompt?: string; ai_engine?: string; platform?: string; api_key?: string; bot_token?: string; username?: string; email?: string; password?: string; totp_secret?: string; temperature?: number; max_tokens?: number }): Promise<Workspace> => {
+  createWorkspace: async (name: string, opts?: { system_prompt?: string; ai_engine?: string; platform?: string; api_key?: string; bot_token?: string; username?: string; email?: string; password?: string; totp_secret?: string; temperature?: number; max_tokens?: number; model?: string }): Promise<Workspace> => {
     const res = await api.post('/workspaces', { name, ...opts });
     return res.data.workspace;
   },
@@ -214,46 +221,75 @@ export const conversationApi = {
 
   getChats: async (): Promise<any[]> => {
     const res = await api.get('/whatsapp/chats');
-    return res.data.chats ?? [];
+    return res.data ?? [];
   },
 
   searchContacts: async (query?: string): Promise<any[]> => {
     const params = query ? { q: query } : {};
     const res = await api.get('/whatsapp/contacts', { params });
-    return res.data.contacts ?? [];
+    return res.data ?? [];
   },
 
-  getChatMessages: async (jid: string, page?: number, offset?: number): Promise<any[]> => {
-    const params: any = {};
+  getChatMessages: async (jid: string, sessionName: string, page?: number, offset?: number): Promise<any[]> => {
+    const params: any = { sessionName };
     if (page) params.page = page;
     if (offset) params.offset = offset;
     const res = await api.get(`/whatsapp/messages/${encodeURIComponent(jid)}`, { params });
     return res.data.messages ?? [];
   },
 
-  markAsRead: async (messages: Array<{ remoteJid: string; fromMe: boolean; id: string }>): Promise<void> => {
-    await api.post('/whatsapp/read', { messages });
+  sendWhatsAppMessage: async (jid: string, sessionName: string, text: string): Promise<any> => {
+    const res = await api.post('/whatsapp/send', { sessionName, number: jid, text });
+    return res.data;
   },
 
-  sendTyping: async (number: string, presence: 'composing' | 'recording' | 'paused' = 'composing'): Promise<void> => {
-    await api.post('/whatsapp/typing', { number, presence });
+  sendWhatsAppMedia: async (jid: string, sessionName: string, file: File, messageType: string, caption?: string): Promise<any> => {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64Data = result.split(',')[1] || result;
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const res = await api.post('/whatsapp/media', {
+      sessionName,
+      number: jid,
+      base64,
+      mediatype: messageType === 'video' ? 'video' : messageType === 'audio' ? 'audio' : messageType === 'document' ? 'document' : 'image',
+      mimetype: file.type || `${messageType}/octet-stream`,
+      fileName: file.name,
+      caption: caption || '',
+    });
+    return res.data;
   },
 
-  getProfilePicture: async (jid: string): Promise<string | null> => {
-    const res = await api.get(`/whatsapp/profile/${encodeURIComponent(jid)}`);
+  markAsRead: async (sessionName: string, messages: Array<{ remoteJid: string; fromMe: boolean; id: string }>): Promise<void> => {
+    await api.post('/whatsapp/read', { sessionName, messages });
+  },
+
+  sendTyping: async (sessionName: string, number: string, presence: 'composing' | 'recording' | 'paused' = 'composing'): Promise<void> => {
+    await api.post('/whatsapp/typing', { sessionName, number, presence });
+  },
+
+  getProfilePicture: async (jid: string, sessionName: string): Promise<string | null> => {
+    const res = await api.get(`/whatsapp/profile/${encodeURIComponent(jid)}`, { params: { sessionName } });
     return res.data.pictureUrl ?? null;
   },
 
-  blockContact: async (number: string, status: 'block' | 'unblock'): Promise<void> => {
-    await api.post('/whatsapp/block', { number, status });
+  blockContact: async (sessionName: string, number: string, status: 'block' | 'unblock'): Promise<void> => {
+    await api.post('/whatsapp/block', { sessionName, number, status });
   },
 
-  archiveChat: async (lastMessage: any, chat: string, archive: boolean): Promise<void> => {
-    await api.post('/whatsapp/archive', { lastMessage, chat, archive });
+  archiveChat: async (sessionName: string, lastMessage: any, chat: string, archive: boolean): Promise<void> => {
+    await api.post('/whatsapp/archive', { sessionName, lastMessage, chat, archive });
   },
 
-  deleteMessage: async (id: string, remoteJid: string, fromMe: boolean): Promise<void> => {
-    await api.delete('/whatsapp/message', { data: { id, remoteJid, fromMe } });
+  deleteMessage: async (sessionName: string, id: string, remoteJid: string, fromMe: boolean): Promise<void> => {
+    await api.delete('/whatsapp/message', { data: { sessionName, id, remoteJid, fromMe } });
   },
 };
 
@@ -322,6 +358,31 @@ export const credentialApi = {
 };
 
 // ---------------------------------------------------------------------------
+// AI API
+// ---------------------------------------------------------------------------
+export interface VerifyResponse {
+  status: 'valid' | 'invalid' | 'no_credits';
+  credits: number;
+  availableModels: Array<{
+    id: string;
+    name: string;
+    context_length: number;
+    pricing: {
+      prompt: string;
+      completion: string;
+    };
+    providerSlug: string;
+  }>;
+}
+
+export const aiApi = {
+  verifyKey: async (apiKey: string): Promise<VerifyResponse> => {
+    const res = await api.post('/ai/verify', { apiKey });
+    return res.data;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Socket.IO helper
 // ---------------------------------------------------------------------------
 export function getSocketUrl(): string {
@@ -329,23 +390,8 @@ export function getSocketUrl(): string {
   return base;
 }
 
-/**
- * Get auth token for Socket.IO connection.
- * Returns the Clerk JWT token, or falls back to dev token in bypass mode.
- */
 export async function getSocketAuthToken(): Promise<string | null> {
-  try {
-    // @ts-expect-error — Clerk is injected globally by ClerkProvider
-    const clerk = window.__clerk;
-    if (clerk?.session) {
-      const token = await clerk.session.getToken();
-      if (token) return token;
-    }
-  } catch {
-    // No Clerk session — fall through
-  }
-  // Dev bypass: return a dummy token (backend will accept it in bypass mode)
-  return 'dev-bypass-token';
+  return clerkBridge.getToken();
 }
 
 // ---------------------------------------------------------------------------

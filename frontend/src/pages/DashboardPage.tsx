@@ -1,24 +1,35 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot, MessageSquare, Users, TrendingUp, MessageCircle, GitBranch, DollarSign, Clock, ThumbsUp, Zap } from "lucide-react";
-import { StatsCard, StatsGrid } from "../components/ui/stats-card";
+import { Bot, MessageSquare, Users, TrendingUp, MessageCircle } from "lucide-react";
+import { StatsCard } from "../components/ui/stats-card";
 import { ActivityFeed } from "../components/dashboard/ActivityFeed";
 import { LeadPipelineFunnel } from "../components/dashboard/LeadPipelineFunnel";
 import { BotHealthGrid } from "../components/dashboard/BotHealthGrid";
 import { MessagesOverTimeChart } from "../components/dashboard/MessagesOverTimeChart";
-import { PlatformBreakdown } from "../components/dashboard/PlatformBreakdown";
 import { analyticsApi } from "../services/api";
 import heroBg from "../assets/ChatGPT Image Apr 6, 2026, 02_58_13 AM.png";
 
 interface DashboardStats {
-  totalBots: number;
   activeBots: number;
   totalLeads: number;
   openConversations: number;
-  qualifiedLeads: number;
   conversionRate: number;
   messagesThisMonth: number;
-  workflowsActive: number;
+}
+
+function StatsCardSkeleton() {
+  return (
+    <div className="flex flex-col justify-between gap-2 p-5 rounded-xl bg-zinc-900 border border-white/5 min-h-[160px] animate-pulse">
+      <div className="flex items-center justify-between">
+        <div className="h-3.5 w-24 bg-zinc-800 rounded" />
+        <div className="h-5 w-5 bg-zinc-800 rounded-full" />
+      </div>
+      <div className="flex items-end justify-between mt-4">
+        <div className="h-8 w-16 bg-zinc-800 rounded" />
+        <div className="h-3 w-16 bg-zinc-800 rounded" />
+      </div>
+    </div>
+  );
 }
 
 export function DashboardPage() {
@@ -27,9 +38,10 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     analyticsApi.getDashboardStats()
       .then((data) => setStats(data))
-      .catch(() => {})
+      .catch((err) => console.error("Failed to load dashboard stats:", err))
       .finally(() => setLoading(false));
   }, []);
 
@@ -43,7 +55,7 @@ export function DashboardPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/60 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/80 to-transparent" />
-        <div className="relative z-10 w-full px-3 md:px-6 lg:px-8 flex-1 flex flex-col justify-end pb-5">
+        <div className="relative z-10 w-full page-padding flex-1 flex flex-col justify-end pb-5">
           <h1
             className="text-white font-semibold leading-[0.92] tracking-[-0.02em]"
             style={{ fontSize: "clamp(52px, 9vw, 108px)", lineHeight: 0.92 }}
@@ -51,31 +63,29 @@ export function DashboardPage() {
             DASHBOARD
           </h1>
           <p className="text-zinc-400 mt-4 text-lg md:text-xl max-w-2xl">
-            Real-time overview of your CRM performance across all platforms.
+            Real-time overview of your WhatsApp CRM performance.
           </p>
         </div>
       </div>
 
       {/* Content */}
-      <div className="w-full px-3 md:px-6 lg:px-8 py-5 space-y-5">
+      <div className="w-full page-padding py-5 space-y-5">
         {/* Primary Stats */}
-        <StatsGrid columns={6}>
-          <StatsCard label="Active Bots" value={loading ? "..." : (stats?.activeBots ?? 0)} change="+1 this week" trend="up" icon={<Bot size={20} />} className="!min-h-[160px] !p-5" onClick={() => navigate("/bots")} />
-          <StatsCard label="Open Conversations" value={loading ? "..." : (stats?.openConversations ?? 0)} change="+3 today" trend="up" icon={<MessageSquare size={20} />} className="!min-h-[160px] !p-5" onClick={() => navigate("/conversations")} />
-          <StatsCard label="Total Leads" value={loading ? "..." : (stats?.totalLeads ?? 0)} change="+2 vs last week" trend="up" icon={<Users size={20} />} className="!min-h-[160px] !p-5" onClick={() => navigate("/leads")} />
-          <StatsCard label="Conversion Rate" value={loading ? "..." : `${stats?.conversionRate ?? 0}%`} change="+3% vs last month" trend="up" icon={<TrendingUp size={20} />} className="!min-h-[160px] !p-5" />
-          <StatsCard label="Messages This Month" value={loading ? "..." : (stats?.messagesThisMonth ?? 0)} change="+12% vs avg" trend="up" icon={<MessageCircle size={20} />} className="!min-h-[160px] !p-5" />
-          <StatsCard label="Active Workflows" value={loading ? "..." : (stats?.workflowsActive ?? 0)} change="No change" trend="neutral" icon={<GitBranch size={20} />} className="!min-h-[160px] !p-5" onClick={() => navigate("/workflows")} />
-        </StatsGrid>
-
-        {/* Secondary Stats */}
-        {/* TODO: Replace hardcoded values with real API endpoints when backend adds revenue, response time, satisfaction, and AI accuracy metrics */}
-        <StatsGrid columns={4}>
-          <StatsCard label="Revenue (MTD)" value="$12.4k" change="+8% vs last month" trend="up" icon={<DollarSign size={20} />} className="!min-h-[160px] !p-5" onClick={() => navigate("/billing")} />
-          <StatsCard label="Avg Response Time" value="1.2s" change="-0.3s vs avg" trend="up" icon={<Clock size={20} />} className="!min-h-[160px] !p-5" />
-          <StatsCard label="Satisfaction Score" value="94%" change="+2% this week" trend="up" icon={<ThumbsUp size={20} />} className="!min-h-[160px] !p-5" />
-          <StatsCard label="AI Accuracy" value="91%" change="+1.5% vs last month" trend="up" icon={<Zap size={20} />} className="!min-h-[160px] !p-5" />
-        </StatsGrid>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <StatsCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <StatsCard label="Active Bots" value={stats?.activeBots ?? 0} change="Online" trend="up" icon={<Bot size={20} />} className="!min-h-[160px] !p-5 cursor-pointer" onClick={() => navigate("/bots")} />
+            <StatsCard label="Open Conversations" value={stats?.openConversations ?? 0} change="Live Chats" trend="up" icon={<MessageSquare size={20} />} className="!min-h-[160px] !p-5 cursor-pointer" onClick={() => navigate("/conversations")} />
+            <StatsCard label="Total Leads" value={stats?.totalLeads ?? 0} change="WhatsApp Leads" trend="up" icon={<Users size={20} />} className="!min-h-[160px] !p-5 cursor-pointer" onClick={() => navigate("/leads")} />
+            <StatsCard label="Messages (MTD)" value={stats?.messagesThisMonth ?? 0} change="Volume" trend="up" icon={<MessageCircle size={20} />} className="!min-h-[160px] !p-5" />
+            <StatsCard label="Conversion Rate" value={`${stats?.conversionRate ?? 0}%`} change="Leads Converted" trend="up" icon={<TrendingUp size={20} />} className="!min-h-[160px] !p-5" />
+          </div>
+        )}
 
         {/* Activity + Pipeline */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -87,11 +97,6 @@ export function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <BotHealthGrid />
           <MessagesOverTimeChart />
-        </div>
-
-        {/* Platform Breakdown */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <PlatformBreakdown />
         </div>
       </div>
     </div>

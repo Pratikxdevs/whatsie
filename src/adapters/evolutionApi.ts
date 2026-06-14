@@ -158,7 +158,10 @@ export async function createInstance(opts: CreateInstanceOptions) {
       url: opts.webhookUrl,
       byEvents: false,
       base64: false,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'authorization': `Bearer ${process.env.EVOLUTION_API_SECRET}` 
+      },
       events: [
         'QRCODE_UPDATED',
         'MESSAGES_UPSERT',
@@ -234,7 +237,11 @@ export async function getConnectionState(instanceName: string) {
 
   // Evolution API returns state at data.instance.state
   const state = data?.instance?.state;
-  const newStatus = state === 'open' ? 'connected' : state === 'close' ? 'disconnected' : undefined;
+  const newStatus = 
+    state === 'open' ? 'connected' : 
+    state === 'close' ? 'disconnected' : 
+    state === 'connecting' ? 'starting' : 
+    undefined;
 
   // DB sync — only write if we got a definitive state and it changed
   if (newStatus) {

@@ -3,9 +3,10 @@ import { normalizeWhatsAppWebhook } from '../normalizer/whatsapp';
 import { whatsappQueue, redisConnection } from '../queue/setup';
 import { io } from '../index';
 import crypto from 'crypto';
-import { prisma } from '../db/prisma';
+import { prisma, prismaUnfiltered } from '../db/prisma';
 import { logger } from '../config/logger';
 import { messagesReceivedTotal } from '../metrics';
+import * as EvoApi from '../adapters/evolutionApi';
 
 const router = Router();
 
@@ -34,15 +35,12 @@ const rateLimitMiddleware = async (req: Request, res: Response, next: NextFuncti
 
 // Signature Validator for WhatsApp (Layer 2)
 const verifyWhatsAppSignature = (req: Request, res: Response, next: NextFunction) => {
-  // Skip signature verification in dev mode (Evolution API v2.3.7 doesn't send x-hub-signature)
-  if (process.env.DEV_AUTH_BYPASS === 'true') {
-    return next();
-  }
 
   const signature = req.headers['x-hub-signature'] || req.headers['authorization'];
   const secret = process.env.EVOLUTION_API_SECRET!;
 
   if (!signature) {
+    logger.warn('Gateway received webhook missing signature');
     return res.status(401).json({ error: 'Missing Signature' });
   }
 
@@ -52,7 +50,14 @@ const verifyWhatsAppSignature = (req: Request, res: Response, next: NextFunction
       .digest('hex');
 
     if (`sha256=${hash}` !== signature) {
+      logger.warn('Gateway received webhook with invalid HMAC signature');
       return res.status(401).json({ error: 'Invalid Signature' });
+    }
+  } else {
+    // Fallback for Evolution API static Bearer tokens
+    if (signature !== `Bearer ${secret}` && signature !== secret) {
+      logger.warn('Gateway received webhook with invalid Bearer token');
+      return res.status(401).json({ error: 'Invalid Authorization Token' });
     }
   }
 
@@ -104,29 +109,49 @@ router.post(
           const connState = rawPayload.data?.state || rawPayload.state;
           const sessionName = rawPayload.instance || rawPayload.key?.remoteJid?.split(':')[0];
           if (connState && sessionName) {
-            const newStatus = connState === 'open' ? 'connected'
+            let newStatus = connState === 'open' ? 'connected'
               : connState === 'close' ? 'disconnected'
               : connState === 'connecting' ? 'starting'
               : null;
-            if (newStatus) {
-              prisma.bot.updateMany({
-                where: { sessionName },
-                data: { status: newStatus },
-              }).then(async () => {
-                // Look up botId so frontend can match by ID
-                const bot = await prisma.bot.findFirst({
-                  where: { sessionName },
-                  select: { id: true },
+
+            // Handle fatal errors (conflict, logged out)
+            const statusReason = rawPayload.data?.statusReason || rawPayload.statusReason;
+            if (connState === 'close' && (statusReason === 409 || statusReason === 401)) {
+              newStatus = 'error';
+              logger.warn({ sessionName, statusReason }, 'Fatal connection error detected. Forcing Evolution API logout to prevent crash loops.');
+              try {
+                // Fire and forget logout to prevent infinite reconnect loop
+                EvoApi.logoutInstance(sessionName).catch(e => {
+                  if (e?.response?.status !== 404 && e?.response?.status !== 400) {
+                     logger.error({ err: e }, 'Failed to force logout looping instance');
+                  }
                 });
-                if (bot) {
-                  io.to(tenantId).emit('bot_status_change', {
-                    botId: bot.id,
-                    status: newStatus,
-                  });
-                }
-              }).catch((err) => {
-                logger.warn({ sessionName, connState, err: err.message }, 'Failed to update bot status from connection.update');
+              } catch (e) {}
+            }
+
+            if (newStatus) {
+              const botRecord = await prismaUnfiltered.bot.findFirst({
+                where: { sessionName },
+                select: { id: true, status: true },
               });
+
+              if (botRecord) {
+                // Allow transition from connected to starting if connection is dropped
+                
+                // Prevent flicker from reconnect loops: if currently errored, ignore auto-reconnects
+                if (botRecord.status === 'error' && newStatus === 'starting') {
+                   return;
+                }
+
+                // Only update and emit if the status actually changed
+                if (botRecord.status !== newStatus) {
+                  await prismaUnfiltered.bot.update({
+                    where: { id: botRecord.id },
+                    data: { status: newStatus },
+                  });
+                  io.to(tenantId).emit('bot_status_change', { botId: botRecord.id, status: newStatus, platform: 'whatsapp' });
+                }
+              }
             }
           }
         }

@@ -5,9 +5,9 @@ describe('credential schemas', () => {
   describe('createCredentialSchema', () => {
     it('accepts valid input', () => {
       const result = createCredentialSchema.safeParse({
-        provider: 'openai',
+        provider: 'openrouter',
         keyName: 'My Key',
-        keyValue: 'sk-abc123',
+        keyValue: 'sk-or-v1-abc123',
       });
       expect(result.success).toBe(true);
     });
@@ -23,7 +23,7 @@ describe('credential schemas', () => {
 
     it('rejects empty keyValue', () => {
       const result = createCredentialSchema.safeParse({
-        provider: 'openai',
+        provider: 'openrouter',
         keyName: 'My Key',
         keyValue: '',
       });
@@ -32,9 +32,9 @@ describe('credential schemas', () => {
 
     it('defaults isDefault to false', () => {
       const result = createCredentialSchema.safeParse({
-        provider: 'openai',
+        provider: 'openrouter',
         keyName: 'My Key',
-        keyValue: 'sk-abc123',
+        keyValue: 'sk-or-v1-abc123',
       });
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.isDefault).toBe(false);

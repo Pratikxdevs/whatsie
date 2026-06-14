@@ -45,4 +45,26 @@ export const queueDepth = new promClient.Gauge({
   registers: [register]
 });
 
+// Telemetry & Security Auditing
+export const apiRateLimitHitsTotal = new promClient.Counter({
+  name: 'api_rate_limit_hits_total',
+  help: 'Total number of rate limit rejections triggered by the security boundary',
+  labelNames: ['route', 'ip'],
+  registers: [register]
+});
+
+export const aiTokenUsageTotal = new promClient.Counter({
+  name: 'ai_token_usage_total',
+  help: 'Total number of AI tokens consumed across the platform',
+  labelNames: ['tenantId', 'model', 'type'], // type: 'prompt' or 'completion'
+  registers: [register]
+});
+
+export const webhookFailuresTotal = new promClient.Counter({
+  name: 'webhook_failures_total',
+  help: 'Total number of webhook deliveries that failed validation or threw an exception',
+  labelNames: ['platform', 'reason'],
+  registers: [register]
+});
+
 

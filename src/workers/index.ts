@@ -24,6 +24,7 @@ import { IntentClassifier } from '../services/intentClassifier';
 import { RuleEngine } from '../services/ruleEngine';
 import { WorkflowEngine } from '../services/workflowEngine';
 import { prisma } from '../db/prisma';
+import { tenantContext } from '../middleware/tenant';
 import { ResponseRouter } from '../router/index';
 import { logger, getContextLogger } from '../config/logger';
 import { addLog } from '../debug/server';
@@ -73,12 +74,19 @@ async function callAiFallback(msg: NormalizedMessage, dbRecords: any) {
 
   addLog('info', `[AI] Calling AI for user=${msg.userId} tenant=${msg.tenantId}`, 'AI_CALL');
 
-  const aiTextRaw = await generateAiResponse(msg.tenantId, msg.userId, msg.message.text || '[empty]');
+  const aiResult = await generateAiResponse(msg.tenantId, msg.userId, msg.message.text || '[empty]');
   
-  const isLead = aiTextRaw.includes('|||LEAD_QUALIFIED|||');
-  const aiText = aiTextRaw.replace('|||LEAD_QUALIFIED|||', '').replace("'|||LEAD_QUALIFIED|||'", '').trim();
+  // Update session state with the new AI-generated summary
+  const state = await SessionManager.getWorkflowState(msg.tenantId, msg.userId);
+  await SessionManager.setWorkflowState(msg.tenantId, msg.userId, {
+    ...state,
+    sessionSummary: aiResult.sessionSummary
+  });
 
-  log.info({ userId: msg.userId, isLead }, 'AI response generated');
+  const isLead = aiResult.isLead;
+  const aiText = aiResult.response;
+
+  log.info({ userId: msg.userId, isLead, intent: aiResult.intent }, 'AI response generated');
 
   if (isLead) {
     await prisma.lead.update({
@@ -87,12 +95,17 @@ async function callAiFallback(msg: NormalizedMessage, dbRecords: any) {
     });
     await logEvent(msg.tenantId, dbRecords.lead.id, 'lead_qualified', {
       platform: msg.platform,
+      intent: aiResult.intent
     });
   } else {
     // Set to contacted if we are actually texting them but they aren't a qualified lead
     await prisma.lead.update({
       where: { id: dbRecords.lead.id },
       data: { status: 'contacted' }
+    });
+    await logEvent(msg.tenantId, dbRecords.lead.id, 'ai_responded', {
+      platform: msg.platform,
+      intent: aiResult.intent
     });
   }
 
@@ -114,9 +127,21 @@ export const whatsappWorker = new Worker(
       log.info({ jobId: job.id, userId: msg.userId }, 'Picked up job');
       messagesReceivedTotal.inc({ platform: 'whatsapp', tenantId: msg.tenantId });
 
-      // ── STEP 1 (spec): Session Manager load ──────────────────────────────
-      const sessionState = await SessionManager.getWorkflowState(msg.tenantId, msg.userId);
-      log.info({ conversationState: sessionState.conversationState ?? 'idle' }, 'Session loaded');
+      return await tenantContext.run({ tenantId: msg.tenantId }, async () => {
+        // ── H-007: Deduplication — reject if we already processed this platform message ──
+        const platformMsgId = msg.metadata?.messageId;
+        if (platformMsgId) {
+          const dedupKey = `dedup:msg:${msg.tenantId}:${platformMsgId}`;
+          const isNew = await redisConnection.set(dedupKey, '1', 'EX', 1800, 'NX');
+          if (!isNew) {
+            log.warn({ platformMsgId }, 'Duplicate webhook detected — skipping job');
+            return; // Clean exit, BullMQ marks job as done
+          }
+        }
+
+        // ── STEP 1 (spec): Session Manager load ──────────────────────────────
+        const sessionState = await SessionManager.getWorkflowState(msg.tenantId, msg.userId);
+        log.info({ conversationState: sessionState.conversationState ?? 'idle' }, 'Session loaded');
 
       // ── STEP 8 (spec): Commit incoming message + upsert lead/conversation ─
       const dbRecords = await processInboundMessageDbUpdates(msg);
@@ -148,6 +173,12 @@ export const whatsappWorker = new Worker(
         role: 'user',
         content: msg.message.text || '',
       });
+
+      // ── AGENT HANDOFF: Check if Bot is Paused ─────────────────────────────
+      if (dbRecords.lead.botPaused) {
+        log.info({ leadId: dbRecords.lead.id }, 'Bot is paused by human agent. Skipping all auto-replies.');
+        return; // Clean exit, AI will not intervene.
+      }
 
       // ── STEP 4 (spec): Workflow Engine — check if mid-flow ───────────────
       if (
@@ -207,6 +238,7 @@ export const whatsappWorker = new Worker(
 
       // ── STEP 5 (spec): AI Orchestrator fallback ───────────────────────────
       return await callAiFallback(msg, dbRecords);
+      }); // End of tenantContext.run
 
     } catch (error) {
       log.error({ err: error, jobId: job.id }, 'Fatal error processing job');

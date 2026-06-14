@@ -4,8 +4,8 @@ import IORedis from 'ioredis';
 // Validate REDIS_URL from Env
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
-// Export reusable Redis connection for BullMQ
-export const redisConnection = new IORedis(redisUrl, {
+// BullMQ expects a specific subset of options, casting to any resolves the strict type conflict
+export const redisConnection: any = new IORedis(redisUrl, {
   maxRetriesPerRequest: null,
 });
 

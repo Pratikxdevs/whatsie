@@ -1,8 +1,8 @@
-import { Play, Square, Pencil, Trash2, Loader2, RotateCcw, X } from 'lucide-react';
+import { Play, Square, Pencil, Trash2, Loader2, RotateCcw, Cpu, Zap, Activity } from 'lucide-react';
 import type { Bot } from './types';
-import { PLATFORM_CONFIG, AI_ENGINE_CONFIG } from './types';
 import { PlatformIcon } from './PlatformIcon';
 import { BotConnectionStatus } from './BotConnectionStatus';
+import { resolveProviderLogo } from '../../lib/brand-resolver';
 
 interface Props {
   bot: Bot;
@@ -15,121 +15,103 @@ interface Props {
 }
 
 export function BotCard({ bot, selected, onSelect, onEdit, onStartStop, onDelete, onClick }: Props) {
-  const platformCfg = PLATFORM_CONFIG[bot.platform] || { label: bot.platform, color: '#71717a', icon: 'HelpCircle', supported: false };
-  const engineCfg = AI_ENGINE_CONFIG[bot.aiEngine] || { label: bot.aiEngine, color: '#71717a' };
   const isConnected = bot.status === 'connected';
-  const isDisconnected = bot.status === 'disconnected';
   const isPending = bot.status === 'pending_qr' || bot.status === 'starting';
   const isError = bot.status === 'error';
+  
+  const aiLogo = resolveProviderLogo(bot.aiEngine);
 
   return (
     <div
-      className={`group relative flex flex-col bg-zinc-900 border rounded-xl overflow-hidden transition-all cursor-pointer ${
+      className={`group relative grid grid-cols-1 lg:grid-cols-3 bg-zinc-900 border rounded-2xl overflow-hidden transition-all cursor-pointer ${
         selected ? 'border-emerald-500/50 ring-1 ring-emerald-500/20' : 'border-zinc-800 hover:border-zinc-700'
       }`}
       onClick={() => onClick?.(bot.id)}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 pb-2">
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={e => { e.stopPropagation(); onSelect?.(bot.id); }}
-            className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/30"
-          />
-          <PlatformIcon platform={bot.platform} size={18} />
-          <div>
-            <h3 className="text-sm font-semibold text-zinc-100 leading-tight">{bot.name}</h3>
-            <span className="text-xs text-zinc-500">{platformCfg.label}</span>
+      {/* Primary Block: WhatsApp Connection */}
+      <div className="p-5 lg:border-r border-zinc-800 flex flex-col justify-between">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={e => { e.stopPropagation(); onSelect?.(bot.id); }}
+              className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/30"
+            />
+            <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center">
+              <PlatformIcon platform="whatsapp" size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100 leading-tight">{bot.name}</h3>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{bot.identifier || 'Unlinked'}</span>
+            </div>
           </div>
         </div>
         <BotConnectionStatus status={bot.status} lastConnected={bot.lastConnected} />
       </div>
 
-      {/* Identifier */}
-      <div className="px-4 pb-2">
-        <span className="text-xs text-zinc-400 font-mono">{bot.identifier}</span>
-      </div>
-
-      {/* Metrics */}
-      <div className="flex border-t border-zinc-800">
-        <div className="flex-1 flex flex-col items-center py-3 border-r border-zinc-800">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider">AI Engine</span>
-          <span className="text-xs font-medium mt-0.5" style={{ color: engineCfg.color }}>{engineCfg.label}</span>
-        </div>
-        <div className="flex-1 flex flex-col items-center py-3 border-r border-zinc-800">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Active Leads</span>
-          <span className={`text-xs font-medium mt-0.5 ${isDisconnected ? 'text-zinc-600' : 'text-zinc-200'}`}>
-            {isDisconnected ? '—' : bot.activeLeads}
-          </span>
-        </div>
-        <div className="flex-1 flex flex-col items-center py-3">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Today</span>
-          <span className={`text-xs font-medium mt-0.5 ${isDisconnected ? 'text-zinc-600' : 'text-zinc-200'}`}>
-            {isDisconnected ? '—' : bot.messagesToday}
-          </span>
+      {/* Secondary Block: AI Engine Config */}
+      <div className="p-5 lg:border-r border-t lg:border-t-0 border-zinc-800 flex flex-col justify-center items-center bg-zinc-900/50">
+        <img src={aiLogo} alt="AI Provider" className="w-10 h-10 rounded shadow-lg mb-3 object-cover bg-zinc-950 p-1" />
+        <h4 className="text-xs font-semibold text-zinc-200">{bot.model || 'Default Model'}</h4>
+        <div className="flex items-center gap-4 mt-3">
+          <div className="flex items-center gap-1.5 text-zinc-400">
+            <Cpu size={12} />
+            <span className="text-[10px] font-mono">{bot.maxTokens} tkns</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-zinc-400">
+            <Zap size={12} />
+            <span className="text-[10px] font-mono">T {bot.temperature}</span>
+          </div>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-1 px-3 py-2 bg-zinc-950/50 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={e => { e.stopPropagation(); onEdit?.(bot.id); }}
-          className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-          title="Edit"
-        >
-          <Pencil size={14} />
-        </button>
-        {isPending ? (
-          <>
-            <button
-              disabled
-              className="p-1.5 rounded-md text-amber-400 opacity-70 cursor-not-allowed"
-              title={bot.status === 'pending_qr' ? 'Waiting for QR scan' : 'Starting...'}
-            >
-              <Loader2 size={14} className="animate-spin" />
+      {/* Tertiary Block: Usage Analytics & Actions */}
+      <div className="p-5 border-t lg:border-t-0 border-zinc-800 flex flex-col justify-between relative">
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex items-center gap-2 text-zinc-400">
+            <Activity size={14} className="text-emerald-500" />
+            <span className="text-xs font-medium uppercase tracking-wider">Pulse</span>
+          </div>
+          <div className="text-right">
+            <div className="text-xl font-bold text-zinc-100">{bot.activeLeads}</div>
+            <div className="text-[10px] text-zinc-500 uppercase">Active Leads</div>
+          </div>
+        </div>
+
+        <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-2 mb-4">
+          {/* Mock token meter fill */}
+          <div className="bg-primary h-full w-[45%]" />
+        </div>
+
+        {/* Actions Menu overlay on hover */}
+        <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+          <button onClick={e => { e.stopPropagation(); onEdit?.(bot.id); }} className="p-2.5 rounded-lg bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all shadow-xl">
+            <Pencil size={16} />
+          </button>
+          
+          {isPending ? (
+            <button disabled className="p-2.5 rounded-lg bg-amber-500/20 text-amber-400 cursor-wait">
+              <Loader2 size={16} className="animate-spin" />
             </button>
-            <button
-              onClick={e => { e.stopPropagation(); onStartStop?.(bot.id); }}
-              className="p-1.5 rounded-md text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-              title="Cancel"
-            >
-              <X size={14} />
+          ) : isConnected ? (
+            <button onClick={e => { e.stopPropagation(); onStartStop?.(bot.id); }} className="p-2.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-all">
+              <Square size={16} />
             </button>
-          </>
-        ) : isConnected ? (
-          <button
-            onClick={e => { e.stopPropagation(); onStartStop?.(bot.id); }}
-            className="p-1.5 rounded-md text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
-            title="Stop"
-          >
-            <Square size={14} />
+          ) : isError ? (
+            <button onClick={e => { e.stopPropagation(); onStartStop?.(bot.id); }} className="p-2.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-all">
+              <RotateCcw size={16} />
+            </button>
+          ) : (
+            <button onClick={e => { e.stopPropagation(); onStartStop?.(bot.id); }} className="p-2.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all">
+              <Play size={16} />
+            </button>
+          )}
+
+          <button onClick={e => { e.stopPropagation(); onDelete?.(bot.id); }} className="p-2.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all">
+            <Trash2 size={16} />
           </button>
-        ) : isError ? (
-          <button
-            onClick={e => { e.stopPropagation(); onStartStop?.(bot.id); }}
-            className="p-1.5 rounded-md text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
-            title="Restart"
-          >
-            <RotateCcw size={14} />
-          </button>
-        ) : (
-          <button
-            onClick={e => { e.stopPropagation(); onStartStop?.(bot.id); }}
-            className="p-1.5 rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
-            title="Start"
-          >
-            <Play size={14} />
-          </button>
-        )}
-        <button
-          onClick={e => { e.stopPropagation(); onDelete?.(bot.id); }}
-          className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-          title="Delete"
-        >
-          <Trash2 size={14} />
-        </button>
+        </div>
       </div>
     </div>
   );

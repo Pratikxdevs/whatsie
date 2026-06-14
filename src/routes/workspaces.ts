@@ -25,10 +25,10 @@ const mapBotToWorkspace = (bot: any) => {
     whatsapp_status: bot.status || 'starting',
     system_prompt: config.system_prompt || null,
     ai_engine: config.ai_engine || null,
-    groq_api_key: config.groq_api_key ? '***' : null,
-    api_key: config.api_key ? '***' : null,
+    api_key: config.api_key || null,
     temperature: config.temperature ?? null,
     max_tokens: config.max_tokens ?? null,
+    model: config.model || null,
     created_at: bot.createdAt.toISOString(),
     updated_at: bot.updatedAt.toISOString(),
   };
@@ -53,7 +53,11 @@ router.get('/', async (req, res) => {
               // WhatsApp — query Evolution API status
               const stateRes = await EvoApi.getConnectionState(bot.sessionName!);
               const state = stateRes.instance?.state;
-              const newStatus = state === 'open' ? 'connected' : state === 'close' ? 'disconnected' : bot.status;
+              const newStatus = 
+                state === 'open' ? 'connected' : 
+                state === 'close' ? 'disconnected' : 
+                state === 'connecting' ? 'starting' : 
+                bot.status;
               if (newStatus !== bot.status) {
                 await prisma.bot.updateMany({ where: { id: bot.id }, data: { status: newStatus } });
                 bot.status = newStatus;
@@ -76,7 +80,7 @@ router.get('/', async (req, res) => {
 // Only persists to DB after Evolution API confirms the instance is created
 router.post('/', validateBody(createBotSchema), async (req, res) => {
   try {
-    const { name, system_prompt, ai_engine, api_key, platform, bot_token, temperature, max_tokens } = req.body;
+    const { name, system_prompt, ai_engine, api_key, platform, bot_token, temperature, max_tokens, model } = req.body;
     const tenantId = (req as AuthenticatedRequest).user!.tenantId;
     const userId = (req as AuthenticatedRequest).user!.id;
 
@@ -126,9 +130,9 @@ router.post('/', validateBody(createBotSchema), async (req, res) => {
           system_prompt: system_prompt || null,
           ai_engine: ai_engine || null,
           api_key: api_key || null,
-          groq_api_key: null,
           temperature: temperature ?? 0.7,
           max_tokens: max_tokens ?? 1024,
+          model: model || null,
         }
       }
     });
@@ -146,7 +150,7 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const tenantId = (req as AuthenticatedRequest).user!.tenantId;
-    const { name, system_prompt, ai_engine, api_key, groq_api_key, temperature, max_tokens } = req.body;
+    const { name, system_prompt, ai_engine, api_key, temperature, max_tokens, model } = req.body;
 
     const bot = await prisma.bot.findFirst({ where: { id, tenantId } });
     if (!bot) {
@@ -159,9 +163,9 @@ router.put('/:id', async (req, res) => {
       system_prompt: system_prompt !== undefined ? system_prompt : currentConfig.system_prompt,
       ai_engine: ai_engine !== undefined ? ai_engine : currentConfig.ai_engine,
       api_key: api_key !== undefined ? api_key : currentConfig.api_key,
-      groq_api_key: groq_api_key !== undefined ? groq_api_key : currentConfig.groq_api_key,
       temperature: temperature !== undefined ? temperature : currentConfig.temperature,
       max_tokens: max_tokens !== undefined ? max_tokens : currentConfig.max_tokens,
+      model: model !== undefined ? model : currentConfig.model,
     };
 
     const updatedBot = await prisma.bot.update({
@@ -179,41 +183,6 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// POST /api/workspaces/:id/validate-key — Test if the AI API key works
-// Accepts optional { provider, key } in body to test against specific provider/key
-// Falls back to bot's stored config if not provided
-router.post('/:id/validate-key', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const tenantId = (req as AuthenticatedRequest).user!.tenantId;
-    const userId = (req as AuthenticatedRequest).user!.id;
-
-    const bot = await prisma.bot.findFirst({ where: { id, tenantId } });
-    if (!bot) return res.status(404).json({ error: 'Workspace not found.' });
-
-    // Allow testing a specific provider/key, or fall back to stored config
-    let providerName = req.body.provider;
-    let apiKey = req.body.key;
-
-    if (!providerName || !apiKey) {
-      const { resolveAiConfig } = await import('../AiInteg/config');
-      const config = await resolveAiConfig(tenantId, userId);
-      providerName = providerName || config.provider;
-      apiKey = apiKey || config.apiKey;
-    }
-
-    if (!apiKey) {
-      return res.json({ valid: false, error: 'No API key configured. Add one in bot settings.' });
-    }
-
-    const { validateProviderKey } = await import('../ai/providers');
-    const result = await validateProviderKey(providerName, apiKey, req.body.model);
-    return res.json(result);
-  } catch (err: any) {
-    logger.error({ err }, 'Key validation error');
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
 
 
 // DELETE /api/workspaces/:id - Delete a bot / instance
@@ -239,8 +208,19 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
-    // 2. Delete the DB record (use deleteMany to avoid P2025 if already gone)
+    // 2. Delete the DB record
     await prisma.bot.deleteMany({ where: { id, tenantId } });
+
+    // 3. Security Audit Log
+    await prisma.auditLog.create({
+      data: {
+        tenantId,
+        action: 'bot_deleted',
+        actorId: (req as AuthenticatedRequest).user?.id || 'unknown',
+        targetId: id,
+        details: { sessionName, platform: bot.platform }
+      }
+    });
 
     return res.status(200).json({ success: true });
   } catch (err: any) {
@@ -337,8 +317,13 @@ router.post('/:id/stop', async (req, res) => {
       await EvoApi.logoutInstance(sessionName);
     } catch (err: any) {
       logger.error({ sessionName, err: err.message }, 'Logout call failed');
-      await prisma.bot.updateMany({ where: { id }, data: { status: 'error' } }).catch(() => {});
-      return res.status(500).json({ error: 'Failed to disconnect from messaging platform', details: err.message });
+      // If Evo API says it's not connected or not found, treat it as a success since our goal is to disconnect
+      if (err.response?.status === 404 || err.response?.status === 400) {
+        logger.info({ sessionName }, 'Instance already disconnected or missing in Evolution API, proceeding with local disconnect');
+      } else {
+        await prisma.bot.updateMany({ where: { id }, data: { status: 'error' } }).catch(() => {});
+        return res.status(500).json({ error: 'Failed to disconnect from messaging platform', details: err.message });
+      }
     }
 
     await prisma.bot.updateMany({ where: { id }, data: { status: 'disconnected' } });

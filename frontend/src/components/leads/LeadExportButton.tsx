@@ -22,7 +22,7 @@ export function LeadExportButton({ leads }: LeadExportButtonProps) {
     const headers = ['name', 'phone', 'email', 'source', 'status', 'createdAt', 'updatedAt'];
     const rows = leads.map((l) =>
       headers.map((h) => {
-        const val = (l as Record<string, unknown>)[h];
+        const val = (l as unknown as Record<string, unknown>)[h];
         return val ? `"${String(val).replace(/"/g, '""')}"` : '';
       }).join(',')
     );

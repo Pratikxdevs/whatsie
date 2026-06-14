@@ -1,14 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Search, Loader2 } from 'lucide-react';
-import { io as ioClient, Socket } from 'socket.io-client';
-import type { Bot, Platform, BotStatus } from '../components/bots/types';
-import { PLATFORM_CONFIG } from '../components/bots/types';
+import { Plus, Search } from 'lucide-react';
+import type { Bot, BotStatus } from '../components/bots/types';
 import { BotGrid } from '../components/bots/BotGrid';
 import { BotDetailPanel } from '../components/bots/BotDetailPanel';
 import { AddBotModal } from '../components/bots/AddBotModal';
 import { BulkActions } from '../components/bots/BulkActions';
 import { QRCodeModal } from '../components/bots/QRCodeModal';
-import { botApi, getSocketUrl, getSocketAuthToken } from '../services/api';
+import { botApi } from '../services/api';
+import { socketManager } from '../services/socketManager';
 import { useAuth } from '../contexts/AuthContext';
 import heroBg from '../assets/ChatGPT Image Apr 6, 2026, 02_58_13 AM.png';
 
@@ -29,11 +28,12 @@ function mapWorkspaceToBot(ws: any): Bot {
     platform: ws.platform || 'whatsapp',
     status: ws.status === 'connected' ? 'connected' : ws.status === 'pending_qr' ? 'pending_qr' : ws.status === 'starting' ? 'starting' : ws.status === 'scanned' ? 'scanned' : ws.status === 'error' ? 'error' : 'disconnected',
     identifier: ws.session_id || ws.id,
-    aiEngine: ws.ai_engine || 'groq',
+    aiEngine: ws.ai_engine || 'openrouter',
     temperature: ws.temperature || 0.7,
     maxTokens: ws.max_tokens || 1024,
     systemPrompt: ws.system_prompt || '',
     apiKey: ws.api_key || '',
+    model: ws.model || '',
     activeLeads: 0,
     messagesToday: 0,
     lastConnected: ws.status === 'connected' ? ws.updated_at : null,
@@ -46,7 +46,6 @@ export function BotsPage() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [platformFilter, setPlatformFilter] = useState<Platform | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<BotStatus | 'all'>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailBotId, setDetailBotId] = useState<string | null>(null);
@@ -64,27 +63,25 @@ export function BotsPage() {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  // Socket.IO — real-time bot status updates
+  // Socket.IO — real-time bot status updates (singleton)
   useEffect(() => {
     if (!user?.tenantId) return;
-    let cancelled = false;
-    (async () => {
-      const token = await getSocketAuthToken();
-      if (cancelled) return;
-      const socket: Socket = ioClient(getSocketUrl(), { auth: { token } });
-      socket.on('bot_status_change', ({ botId, status }: { botId: string; status: BotStatus }) => {
-        setBots(prev => prev.map(b => b.id === botId ? {
-          ...b,
-          status,
-          lastConnected: status === 'connected' ? new Date().toISOString() : b.lastConnected,
-        } : b));
-        if (status === 'connected') {
-          setQrModal(prev => prev && prev.botId === botId ? { ...prev, status: 'connected' } : prev);
-        }
-      });
-      return () => { socket.disconnect(); };
-    })();
-    return () => { cancelled = true; };
+
+    socketManager.connect(user.tenantId);
+
+    const handleStatusChange = ({ botId, status }: { botId: string; status: BotStatus }) => {
+      setBots(prev => prev.map(b => b.id === botId ? {
+        ...b,
+        status,
+        lastConnected: status === 'connected' ? new Date().toISOString() : b.lastConnected,
+      } : b));
+      if (status === 'connected') {
+        setQrModal(prev => prev && prev.botId === botId ? { ...prev, status: 'connected' } : prev);
+      }
+    };
+
+    socketManager.on('bot_status_change', handleStatusChange);
+    return () => { socketManager.off('bot_status_change', handleStatusChange); };
   }, [user?.tenantId]);
 
   useEffect(() => {
@@ -105,11 +102,10 @@ export function BotsPage() {
   const filtered = useMemo(() => {
     return bots.filter(b => {
       if (search && !b.name.toLowerCase().includes(search.toLowerCase()) && !b.identifier.toLowerCase().includes(search.toLowerCase())) return false;
-      if (platformFilter !== 'all' && b.platform !== platformFilter) return false;
       if (statusFilter !== 'all' && b.status !== statusFilter) return false;
       return true;
     });
-  }, [bots, search, platformFilter, statusFilter]);
+  }, [bots, search, statusFilter]);
 
   const detailBot = detailBotId ? bots.find(b => b.id === detailBotId) || null : null;
 
@@ -259,6 +255,7 @@ export function BotsPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
+      <div className="w-full max-w-[1600px] mx-auto flex flex-col gap-6 pb-12">
       {/* Hero */}
       <div className="relative w-full h-[280px] md:h-[320px] overflow-hidden flex flex-col border-b border-white/5">
         <div
@@ -267,7 +264,7 @@ export function BotsPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/60 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/80 to-transparent" />
-        <div className="relative z-20 w-full flex justify-end px-6 md:px-12 lg:px-16 pt-4">
+        <div className="relative z-20 w-full flex justify-end page-padding pt-4">
           <button
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-semibold text-sm rounded-xl transition-all"
@@ -276,7 +273,7 @@ export function BotsPage() {
             Add Bot
           </button>
         </div>
-        <div className="relative z-10 w-full px-6 md:px-12 lg:px-16 flex-1 flex flex-col justify-end pb-8">
+        <div className="relative z-10 w-full page-padding flex-1 flex flex-col justify-end pb-8">
           <h1 className="text-white font-semibold leading-[0.92] tracking-[-0.02em]" style={{ fontSize: 'clamp(52px, 9vw, 108px)', lineHeight: 0.92 }}>
             BOT<br />MANAGEMENT
           </h1>
@@ -284,7 +281,7 @@ export function BotsPage() {
       </div>
 
       {/* Content */}
-      <div className="w-full px-6 md:px-12 lg:px-16 py-5">
+      <div className="w-full page-padding py-5">
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -297,16 +294,6 @@ export function BotsPage() {
               className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600 placeholder:text-zinc-600"
             />
           </div>
-          <select
-            value={platformFilter}
-            onChange={e => setPlatformFilter(e.target.value as Platform | 'all')}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none"
-          >
-            <option value="all">All Platforms</option>
-            {Object.entries(PLATFORM_CONFIG).map(([key, cfg]) => (
-              <option key={key} value={key}>{cfg.label}</option>
-            ))}
-          </select>
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as BotStatus | 'all')}
@@ -422,7 +409,7 @@ export function BotsPage() {
             try {
               await botApi.stopWorkspace(id);
               // Poll until the backend confirms the bot is no longer connected
-              let disconnected = false;
+              let disconnected = false; // eslint-disable-line @typescript-eslint/no-unused-vars
               for (let i = 0; i < 10; i++) {
                 await new Promise(r => setTimeout(r, 500));
                 try {
@@ -436,6 +423,7 @@ export function BotsPage() {
                   break;
                 }
               }
+              void disconnected; // consumed: confirms if backend acked disconnect
               // If still connected after retries, proceed anyway
               setBots(prev => prev.map(b => b.id === id ? { ...b, status: 'starting' } : b));
               const bot = botsRef.current.find(b => b.id === id);
@@ -534,6 +522,7 @@ export function BotsPage() {
                 ...(data.temperature !== undefined ? { temperature: data.temperature } : {}),
                 ...(data.max_tokens !== undefined ? { maxTokens: data.max_tokens } : {}),
                 ...(data.api_key ? { apiKey: '***' } : {}),
+                model: data.model || b.model,
               } : b));
             } catch (err) {
               console.error('Failed to save bot config:', err);
@@ -574,6 +563,7 @@ export function BotsPage() {
         status={qrModal?.status || 'loading'}
         platform={qrModal?.platform}
       />
+      </div>
     </div>
   );
 }

@@ -173,9 +173,9 @@ describe('Credential Schemas', () => {
   describe('createCredentialSchema', () => {
     it('accepts valid input', () => {
       const result = createCredentialSchema.safeParse({
-        provider: 'openai',
+        provider: 'openrouter',
         keyName: 'Production Key',
-        keyValue: 'sk-abc123',
+        keyValue: 'sk-or-v1-abc123',
       });
       expect(result.success).toBe(true);
     });

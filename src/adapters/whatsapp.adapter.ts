@@ -17,11 +17,17 @@ export class WhatsAppAdapter {
    */
   static async sendMessage(sessionName: string, remoteJid: string, text: string) {
     return sendWithRateLimit('whatsapp', async () => {
-      return sendText(sessionName, {
-        number: remoteJid,
-        text,
-        delay: 1200,
-      });
+      try {
+        return await sendText(sessionName, {
+          number: remoteJid,
+          text,
+          delay: 1200,
+        });
+      } catch (err: any) {
+        const status = err?.response?.status || 'UNKNOWN';
+        const details = err?.response?.data ? JSON.stringify(err.response.data) : err.message;
+        throw new Error(`Delivery failed [${status}]: ${details}`);
+      }
     });
   }
 

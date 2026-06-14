@@ -67,3 +67,30 @@ html, body, #root {
 .animate-fadeIn {
   animation: fadeIn 0.2s ease-out;
 }
+
+@layer utilities {
+  .page-padding {
+    @apply px-4 xl:px-6 py-6 w-full;
+  }
+}
+
+/* Universal scrollbar theming */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.8);
+}
+
+/* Checkbox accenting */
+input[type="checkbox"] {
+  accent-color: hsl(var(--primary));
+}

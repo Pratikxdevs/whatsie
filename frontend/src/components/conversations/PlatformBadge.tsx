@@ -1,12 +1,4 @@
-import {
-  MessageSquare,
-  Send,
-  MessageCircle,
-  AtSign,
-  Camera,
-  Users,
-  Hash,
-} from 'lucide-react';
+import { MessageSquare, MessageCircle } from 'lucide-react';
 
 const platformConfig: Record<string, { icon: typeof MessageSquare; color: string; bg: string; label: string }> = {
   whatsapp: { icon: MessageCircle, color: 'text-[#25D366]', bg: 'bg-[#25D366]/15', label: 'WhatsApp' },

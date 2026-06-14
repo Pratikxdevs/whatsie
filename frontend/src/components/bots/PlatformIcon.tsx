@@ -2,7 +2,7 @@ import { MessageCircle } from 'lucide-react';
 import type { Platform } from './types';
 import { PLATFORM_CONFIG } from './types';
 
-const ICONS: Record<Platform, React.ComponentType<{ size?: number; className?: string }>> = {
+const ICONS: Record<Platform, React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>> = {
   whatsapp: MessageCircle,
 };
 

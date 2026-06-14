@@ -174,12 +174,18 @@ class ErrorLogger {
    */
   logApiError(error: any, endpoint?: string) {
     const code = this.classifyError(error);
-    const message = error?.response?.data?.error || error?.message || 'Unknown API error';
+    const backendError = error?.response?.data?.error || error?.message || 'Unknown API error';
+    const backendDetails = error?.response?.data?.details || error?.response?.data?.message || '';
     const status = error?.response?.status;
+
+    // Combine error and details for maximum visibility
+    const fullMessage = backendDetails 
+      ? `${backendError}: ${backendDetails}`
+      : backendError;
 
     return this.log({
       code,
-      message: `${message}${status ? ` [${status}]` : ''}${endpoint ? ` → ${endpoint}` : ''}`,
+      message: `${fullMessage}${status ? ` [${status}]` : ''}${endpoint ? ` → ${endpoint}` : ''}`,
       detail: error?.response?.data ? JSON.stringify(error.response.data).slice(0, 500) : undefined,
       meta: { endpoint, status, method: error?.config?.method },
       source: 'api',

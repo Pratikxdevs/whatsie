@@ -23,11 +23,11 @@ export const authRateLimiter = rateLimit({
 
 /**
  * General API rate limiter.
- * 100 requests per minute per IP.
+ * 500 requests per minute per IP.
  */
 export const apiRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({

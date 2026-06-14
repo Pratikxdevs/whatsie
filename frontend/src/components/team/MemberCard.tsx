@@ -1,5 +1,4 @@
-import { MoreHorizontal, Trash2, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { Trash2 } from "lucide-react";
 
 interface Member {
   id: string;
@@ -17,7 +16,6 @@ const roleColors: Record<string, string> = {
 };
 
 export function MemberCard({ member }: { member: Member }) {
-  const [showMenu, setShowMenu] = useState(false);
 
   return (
     <div className="flex items-center justify-between p-4 bg-zinc-900 border border-white/5 rounded-xl">

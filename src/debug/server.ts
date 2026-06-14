@@ -150,12 +150,23 @@ export function startDebugServer() {
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
       return;
+    }
+
+    // L-004: Optional bearer auth — set DEBUG_TOKEN env var to protect this server
+    const debugToken = process.env.DEBUG_TOKEN;
+    if (debugToken) {
+      const auth = req.headers.authorization;
+      if (!auth || auth !== `Bearer ${debugToken}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="debug"' });
+        res.end(JSON.stringify({ error: 'Unauthorized — set Authorization: Bearer <DEBUG_TOKEN>' }));
+        return;
+      }
     }
 
     // Dashboard HTML

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const VALID_PROVIDERS = [
-  'groq', 'openai', 'openrouter', 'gemini',
+  'openrouter',
   'evolution',
 ] as const;
 

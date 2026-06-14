@@ -3,12 +3,13 @@ import { MessageBubble } from "../components/conversations/MessageBubble";
 import { MessageInput } from "../components/conversations/MessageInput";
 import { ContactSidebar } from "../components/conversations/ContactSidebar";
 import { TypingIndicator } from "../components/conversations/TypingIndicator";
-import { Search, MessageSquare, ChevronDown, Phone, Mail, Ban, Archive, Eye, Loader2 } from "lucide-react";
+import { Search, MessageSquare, Eye, Loader2 } from "lucide-react";
 import heroBg from "../assets/ChatGPT Image Apr 6, 2026, 02_58_13 AM.png";
-import { conversationApi, getSocketUrl, getSocketAuthToken } from "../services/api";
-import { io as socketIo, Socket } from "socket.io-client";
+import { conversationApi, botApi } from "../services/api";
+import { socketManager } from "../services/socketManager";
+import { NoBotGate } from "../components/ui/NoBotGate";
 import { useAuth } from "../contexts/AuthContext";
-import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
 
 // ---------------------------------------------------------------------------
 // Types — Evolution API shapes
@@ -25,6 +26,8 @@ interface ChatItem {
   archived?: boolean;
   pinned?: boolean;
   isGroup?: boolean;
+  sessionName?: string;
+  botName?: string;
 }
 
 interface ChatMessage {
@@ -38,10 +41,6 @@ interface ChatMessage {
   update?: number;
 }
 
-interface ProfilePicture {
-  jid: string;
-  pictureUrl: string | null;
-}
 
 const filterTabs = ["All", "Unread", "Archived"] as const;
 type FilterTab = typeof filterTabs[number];
@@ -152,8 +151,13 @@ function ChatListItem({
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-100 truncate">
+            <span className="text-sm font-medium text-zinc-100 truncate flex items-center gap-2">
               {chat.name || chat.pushName || chat.jid}
+              {chat.botName && (
+                <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[9px] uppercase tracking-wider font-semibold">
+                  {chat.botName}
+                </span>
+              )}
             </span>
             <span className="text-[10px] text-zinc-500 shrink-0 ml-2">
               {formatChatTime(chat.lastMessageTimestamp)}
@@ -181,6 +185,9 @@ function ChatListItem({
 export function ConversationsPage() {
   const { user } = useAuth();
 
+  // Bot gate check
+  const [hasBots, setHasBots] = useState<boolean | null>(null); // null = loading
+
   // Chat list state
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatsLoading, setChatsLoading] = useState(true);
@@ -204,81 +211,81 @@ export function ConversationsPage() {
   const [profilePics, setProfilePics] = useState<Record<string, string | null>>({});
 
   // Typing indicator
+  // @ts-ignore — setter will be wired to socket typing events
   const [contactTyping, setContactTyping] = useState(false);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Read receipts
   const [isMarkingRead, setIsMarkingRead] = useState(false);
 
   // Socket.IO
-  const socketRef = useRef<Socket | null>(null);
   const selectedJidRef = useRef(selectedJid);
   useEffect(() => { selectedJidRef.current = selectedJid; }, [selectedJid]);
 
   // -----------------------------------------------------------------------
-  // Socket.IO connection
+  // Bot gate check — load bots to decide if we show the conversation UI
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const bots = await botApi.getWorkspaces();
+        if (!cancelled) setHasBots(Array.isArray(bots) && bots.length > 0);
+      } catch {
+        if (!cancelled) setHasBots(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // -----------------------------------------------------------------------
+  // Socket.IO connection (singleton)
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (!user?.tenantId) return;
-    let cancelled = false;
-    (async () => {
-      const token = await getSocketAuthToken();
-      if (cancelled) return;
-      const socket = socketIo(getSocketUrl(), {
-        transports: ["websocket", "polling"],
-        auth: { token },
+
+    socketManager.connect(user.tenantId);
+
+    const handleNewMessage = (payload: { chat?: any; message?: any }) => {
+      const { chat, message } = payload;
+      if (!chat || !message) return;
+
+      const msgJid = message.key?.remoteJid || chat.jid;
+      if (!msgJid) return;
+
+      // Update chat list: move chat to top, update preview
+      setChats((prev) => {
+        const idx = prev.findIndex((c) => c.jid === msgJid);
+        const text = extractTextFromMessage(message);
+        const ts = message.messageTimestamp
+          ? new Date(message.messageTimestamp * 1000).toISOString()
+          : new Date().toISOString();
+
+        const updatedChat: ChatItem = {
+          ...(idx >= 0 ? prev[idx] : chat),
+          jid: msgJid,
+          name: chat.name || chat.pushName || msgJid,
+          lastMessage: text,
+          lastMessageTimestamp: ts,
+          unreadCount: selectedJidRef.current === msgJid
+            ? 0
+            : (idx >= 0 ? (prev[idx].unreadCount ?? 0) + 1 : 1),
+        };
+
+        const rest = idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
+        return [updatedChat, ...rest];
       });
-      socketRef.current = socket;
 
-      socket.on("connect", () => {
-        socket.emit("join_tenant", user.tenantId);
-      });
-
-      // Real-time new message
-      socket.on("new_message", (payload: { chat?: any; message?: any }) => {
-        const { chat, message } = payload;
-        if (!chat || !message) return;
-
-        const msgJid = message.key?.remoteJid || chat.jid;
-        if (!msgJid) return;
-
-        // Update chat list: move chat to top, update preview
-        setChats((prev) => {
-          const idx = prev.findIndex((c) => c.jid === msgJid);
-          const text = extractTextFromMessage(message);
-          const ts = message.messageTimestamp
-            ? new Date(message.messageTimestamp * 1000).toISOString()
-            : new Date().toISOString();
-
-          const updatedChat: ChatItem = {
-            ...(idx >= 0 ? prev[idx] : chat),
-            jid: msgJid,
-            name: chat.name || chat.pushName || msgJid,
-            lastMessage: text,
-            lastMessageTimestamp: ts,
-            unreadCount: selectedJidRef.current === msgJid
-              ? 0
-              : (idx >= 0 ? (prev[idx].unreadCount ?? 0) + 1 : 1),
-          };
-
-          const rest = idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
-          return [updatedChat, ...rest];
+      // If the message belongs to the currently open chat, append it
+      if (msgJid === selectedJidRef.current) {
+        setMessages((prev) => {
+          if (message.id && prev.some((m) => m.id === message.id)) return prev;
+          return [...prev, message];
         });
-
-        // If the message belongs to the currently open chat, append it
-        if (msgJid === selectedJidRef.current) {
-          setMessages((prev) => {
-            if (message.id && prev.some((m) => m.id === message.id)) return prev;
-            return [...prev, message];
-          });
-        }
-      });
-    })();
-    return () => {
-      cancelled = true;
-      socketRef.current?.disconnect();
-      socketRef.current = null;
+      }
     };
+
+    socketManager.on('new_message', handleNewMessage);
+    return () => { socketManager.off('new_message', handleNewMessage); };
   }, [user?.tenantId]);
 
   // -----------------------------------------------------------------------
@@ -318,9 +325,10 @@ export function ConversationsPage() {
 
     let cancelled = false;
     (async () => {
+      if (!chat?.sessionName) return;
       try {
         setMessagesLoading(true);
-        const data = await conversationApi.getChatMessages(selectedJid);
+        const data = await conversationApi.getChatMessages(selectedJid, chat.sessionName);
         if (!cancelled) setMessages(Array.isArray(data) ? data : []);
       } catch (err: unknown) {
         if (!cancelled) {
@@ -338,7 +346,7 @@ export function ConversationsPage() {
   // Mark messages as read when opening a conversation
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!selectedJid) return;
+    if (!selectedJid || !selectedChat?.sessionName) return;
     const unread = messages.filter(
       (m) => !m.fromMe && m.status !== "read" && m.status !== "played"
     );
@@ -349,6 +357,7 @@ export function ConversationsPage() {
       try {
         setIsMarkingRead(true);
         await conversationApi.markAsRead(
+          selectedChat.sessionName!,
           unread.map((m) => ({
             remoteJid: m.key.remoteJid,
             fromMe: m.key.fromMe,
@@ -383,8 +392,9 @@ export function ConversationsPage() {
       const results: Record<string, string | null> = {};
       await Promise.allSettled(
         toFetch.slice(0, 20).map(async (c) => {
+          if (!c.sessionName) return;
           try {
-            const url = await conversationApi.getProfilePicture(c.jid);
+            const url = await conversationApi.getProfilePicture(c.jid, c.sessionName);
             results[c.jid] = url;
           } catch {
             results[c.jid] = null;
@@ -400,24 +410,13 @@ export function ConversationsPage() {
   }, [chats]);
 
   // -----------------------------------------------------------------------
-  // Typing indicator (composing → paused after 3s)
-  // -----------------------------------------------------------------------
-  const handleTyping = useCallback((number: string) => {
-    conversationApi.sendTyping(number, "composing").catch(() => {});
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      conversationApi.sendTyping(number, "paused").catch(() => {});
-    }, 3000);
-  }, []);
-
-  // -----------------------------------------------------------------------
   // Send message via Evolution API
   // -----------------------------------------------------------------------
   const handleSend = useCallback(async (text: string) => {
-    if (!selectedJid || !selectedChat) return;
+    if (!selectedJid || !selectedChat?.sessionName) return;
     setSendError(null);
     try {
-      await conversationApi.sendMessage(selectedJid, text);
+      await conversationApi.sendWhatsAppMessage(selectedJid, selectedChat.sessionName, text);
 
       // Append optimistic message to thread
       const optimistic: ChatMessage = {
@@ -445,7 +444,7 @@ export function ConversationsPage() {
       );
 
       // Send typing stopped
-      conversationApi.sendTyping(selectedJid, "paused").catch(() => {});
+      conversationApi.sendTyping(selectedChat.sessionName, selectedJid, "paused").catch(() => {});
     } catch (err: unknown) {
       setSendError(err instanceof Error ? err.message : "Failed to send message");
     }
@@ -455,34 +454,24 @@ export function ConversationsPage() {
   // Send media via Evolution API
   // -----------------------------------------------------------------------
   const handleSendMedia = useCallback(async (file: File) => {
-    if (!selectedJid) return;
+    if (!selectedJid || !selectedChat?.sessionName) return;
     setSendError(null);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1] || result);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
       let mediaType = "document";
       if (file.type.startsWith("image/")) mediaType = "image";
       else if (file.type.startsWith("audio/")) mediaType = "audio";
       else if (file.type.startsWith("video/")) mediaType = "video";
 
-      const res = await (await import("../services/api")).api.post("/whatsapp/send-media", {
-        number: selectedJid,
-        mediatype: mediaType,
-        mimetype: file.type,
-        fileName: file.name,
-        body: base64,
-      });
+      const res = await conversationApi.sendWhatsAppMedia(
+        selectedJid,
+        selectedChat.sessionName,
+        file,
+        mediaType,
+        file.name
+      );
 
-      if (res.data?.message) {
-        setMessages((prev) => [...prev, res.data.message]);
+      if (res?.key?.id) {
+        // Optimistically add to UI if needed, Evolution returns a key
       }
 
       setChats((prev) =>
@@ -500,58 +489,6 @@ export function ConversationsPage() {
       setSendError(err instanceof Error ? err.message : "Failed to send media");
     }
   }, [selectedJid]);
-
-  // -----------------------------------------------------------------------
-  // Block/unblock contact
-  // -----------------------------------------------------------------------
-  const handleBlockContact = useCallback(async (number: string) => {
-    if (!selectedChat) return;
-    try {
-      const isBlocked = (selectedChat as any).blocked;
-      await conversationApi.blockContact(number, isBlocked ? "unblock" : "block");
-      setChats((prev) =>
-        prev.map((c) =>
-          c.jid === selectedJid ? { ...c, blocked: !isBlocked } : c
-        )
-      );
-    } catch (err) {
-      console.error("Block/unblock failed:", err);
-    }
-  }, [selectedChat, selectedJid]);
-
-  // -----------------------------------------------------------------------
-  // Archive/unarchive chat
-  // -----------------------------------------------------------------------
-  const handleArchiveChat = useCallback(async () => {
-    if (!selectedChat) return;
-    try {
-      const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-      await conversationApi.archiveChat(
-        lastMsg ? { key: lastMsg.key, message: lastMsg.message } : null,
-        selectedChat.jid,
-        !(selectedChat as any).archived
-      );
-      setChats((prev) =>
-        prev.map((c) =>
-          c.jid === selectedJid ? { ...c, archived: !(c as any).archived } : c
-        )
-      );
-    } catch (err) {
-      console.error("Archive failed:", err);
-    }
-  }, [selectedChat, selectedJid, messages]);
-
-  // -----------------------------------------------------------------------
-  // Delete message
-  // -----------------------------------------------------------------------
-  const handleDeleteMessage = useCallback(async (msg: ChatMessage) => {
-    try {
-      await conversationApi.deleteMessage(msg.key.id, msg.key.remoteJid, msg.key.fromMe);
-      setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-    } catch (err) {
-      console.error("Delete failed:", err);
-    }
-  }, []);
 
   // -----------------------------------------------------------------------
   // Filtered chats
@@ -629,6 +566,25 @@ export function ConversationsPage() {
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
+  if (hasBots === null) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-zinc-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (hasBots === false) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-200">
+        <NoBotGate
+          title="Connect a bot to view conversations"
+          description="Conversations are synced from your WhatsApp bots. Connect your first bot to start seeing real-time chats here."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-emerald-500/20 overflow-x-hidden">
       {/* Hero Section */}
@@ -639,7 +595,7 @@ export function ConversationsPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/80 to-transparent" />
-        <div className="relative z-10 w-full px-6 md:px-12 lg:px-16 flex-1 flex flex-col justify-end pb-8">
+        <div className="relative z-10 w-full page-padding flex-1 flex flex-col justify-end pb-8">
           <h1
             className="text-white font-semibold leading-[0.92] tracking-[-0.02em]"
             style={{ fontSize: "clamp(52px, 9vw, 108px)", lineHeight: 0.92 }}
@@ -653,7 +609,7 @@ export function ConversationsPage() {
       </div>
 
       {/* 3-Panel Layout */}
-      <div className="w-full px-6 md:px-12 lg:px-16 py-6 md:py-8">
+      <div className="w-full page-padding py-6 md:py-8">
         <div className="flex gap-4 h-[calc(100vh-400px)] min-h-[500px]">
 
           {/* ─── LEFT: Chat List ─── */}

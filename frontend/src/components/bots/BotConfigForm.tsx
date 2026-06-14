@@ -11,27 +11,28 @@ interface Props {
   temperature?: number;
   maxTokens?: number;
   apiKey?: string;
-  onSave: (data: { name: string; systemPrompt: string; aiEngine: AiEngine; temperature: number; maxTokens: number; apiKey: string }) => void;
+  model?: string;
+  onSave: (data: { name: string; systemPrompt: string; aiEngine: AiEngine; temperature: number; maxTokens: number; apiKey: string; model?: string }) => void;
   onCancel: () => void;
 }
 
-export function BotConfigForm({ botId, name = '', systemPrompt = '', aiEngine = 'groq', temperature = 0.7, maxTokens = 1024, apiKey = '', onSave, onCancel }: Props) {
-  const [form, setForm] = useState({ name, systemPrompt, aiEngine, temperature, maxTokens, apiKey, model: '' });
+export function BotConfigForm({ botId, name = '', systemPrompt = '', aiEngine = 'openrouter', temperature = 0.7, maxTokens = 1024, apiKey = '', model = '', onSave, onCancel }: Props) {
+  const [form, setForm] = useState({ name, systemPrompt, aiEngine, temperature, maxTokens, apiKey, model });
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [isDirty, setIsDirty] = useState(false);
   const [keySaved, setKeySaved] = useState(false);
-  const initialRef = useRef({ name, systemPrompt, aiEngine, temperature, maxTokens, apiKey, model: '' });
+  const initialRef = useRef({ name, systemPrompt, aiEngine, temperature, maxTokens, apiKey, model });
 
   // Reset form when bot changes (e.g., clicking a different bot card)
   useEffect(() => {
-    const initial = { name, systemPrompt, aiEngine, temperature, maxTokens, apiKey, model: '' };
+    const initial = { name, systemPrompt, aiEngine, temperature, maxTokens, apiKey, model };
     setForm(initial);
     initialRef.current = initial;
     setIsDirty(false);
     setSaveStatus('idle');
     setKeySaved(false);
-  }, [botId, name, systemPrompt, aiEngine, temperature, maxTokens, apiKey]);
+  }, [botId, name, systemPrompt, aiEngine, temperature, maxTokens, apiKey, model]);
 
   // Track dirty state
   const updateForm = (patch: Partial<typeof form>) => {

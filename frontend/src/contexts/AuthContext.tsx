@@ -1,4 +1,8 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { useUser, useAuth as useClerkAuth, useClerk } from "@clerk/clerk-react";
+import { clerkBridge } from "../lib/clerk-bridge";
 
 interface User {
   id: string;
@@ -19,36 +23,60 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Dev user — backend uses DEV_AUTH_BYPASS=true so no real auth needed
-const DEV_USER: User = {
-  id: "dev-user-001",
-  email: "admin@acmecorp.com",
-  role: "admin",
-  tenantId: "test-tenant-id",
-  companyName: "Acme Corp",
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user] = useState<User | null>(DEV_USER);
+  const { user: clerkUser, isLoaded: userLoaded } = useUser();
+  const { isSignedIn, getToken } = useClerkAuth();
+  const { signOut, openSignIn, openSignUp } = useClerk();
+  const navigate = useNavigate();
+  const wasSignedIn = useRef(false);
 
-  const login = async (email: string, _password: string) => {
+  // Map Clerk user to app User interface
+  const user: User | null = clerkUser && isSignedIn
+    ? {
+        id: clerkUser.id,
+        email: clerkUser.primaryEmailAddress?.emailAddress || "",
+        role: (clerkUser.publicMetadata?.role as "admin" | "agent" | "viewer") || "admin",
+        tenantId: (clerkUser.publicMetadata?.tenantId as string) || clerkUser.id,
+        companyName: (clerkUser.publicMetadata?.companyName as string) || clerkUser.firstName || "My Workspace",
+      }
+    : null;
+
+  const login = async (_email: string, _password: string) => {
+    openSignIn();
     return { success: true };
   };
 
-  const register = async (companyName: string, email: string, _password: string) => {
+  const register = async (_companyName: string, _email: string, _password: string) => {
+    openSignUp();
     return { success: true };
   };
 
   const logout = () => {
-    // No-op in dev mode
+    signOut();
   };
+
+  // Detect session expiry — if user was signed in and Clerk has fully loaded but isSignedIn is now false
+  useEffect(() => {
+    if (!userLoaded) return;
+    if (isSignedIn) {
+      wasSignedIn.current = true;
+    } else if (wasSignedIn.current && !isSignedIn) {
+      // Was signed in, now signed out mid-session
+      wasSignedIn.current = false;
+      toast.info("Session expired — please sign in again");
+      navigate("/login", { replace: true });
+    }
+  }, [isSignedIn, userLoaded, navigate]);
+
+  // M-004: Wire module-level bridge instead of window monkey-patch
+  clerkBridge.init(getToken, signOut);
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: true,
-        isLoading: false,
+        isAuthenticated: !!isSignedIn,
+        isLoading: !userLoaded,
         login,
         register,
         logout,

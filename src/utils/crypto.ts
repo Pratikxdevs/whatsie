@@ -7,8 +7,9 @@ const TAG_LENGTH = 16;
 
 function getEncryptionKey(): string {
   const key = process.env.CREDENTIAL_ENCRYPTION_KEY;
-  if (!key) {
-    throw new Error('CREDENTIAL_ENCRYPTION_KEY is not set. It is required for AES-256-GCM encryption.');
+  if (!key || Buffer.from(key, 'utf8').length < 32) {
+    console.error('CRITICAL_SECURITY_ERROR: CREDENTIAL_ENCRYPTION_KEY must be exactly 32 bytes or longer.');
+    process.exit(1);
   }
   return key;
 }

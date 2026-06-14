@@ -17,18 +17,12 @@ import { credentialApi, type Credential } from "../../services/api";
 import { credentialFormSchema, type CredentialFormInput } from "../../schemas/credentials";
 
 const PROVIDERS = [
-  { value: "groq", label: "Groq" },
-  { value: "openai", label: "OpenAI" },
   { value: "openrouter", label: "OpenRouter" },
-  { value: "gemini", label: "Google Gemini" },
   { value: "evolution", label: "Evolution API" },
 ];
 
 const providerColors: Record<string, string> = {
-  groq: "bg-orange-500/10 text-orange-400",
-  openai: "bg-emerald-500/10 text-emerald-400",
   openrouter: "bg-blue-500/10 text-blue-400",
-  gemini: "bg-purple-500/10 text-purple-400",
   evolution: "bg-cyan-500/10 text-cyan-400",
 };
 
@@ -55,7 +49,7 @@ export function APIKeysTab() {
   } = useForm<CredentialFormInput>({
     resolver: zodResolver(credentialFormSchema),
     defaultValues: {
-      provider: "groq",
+      provider: "openrouter" as "openrouter",
       keyName: "",
       keyValue: "",
       isDefault: false,

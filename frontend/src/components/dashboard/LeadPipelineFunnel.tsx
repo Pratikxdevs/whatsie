@@ -2,18 +2,20 @@ import { useState, useEffect } from "react";
 import { analyticsApi } from "../../services/api";
 
 const STATUS_COLORS: Record<string, string> = {
-  new: "#71717a",
-  contacted: "#3B82F6",
-  qualified: "#A855F7",
-  converted: "#4ADE80",
-  lost: "#F87171",
+  new: "#A1A1AA",      // Silver/Zinc
+  contacted: "#3B82F6", // Blue
+  qualified: "#8B5CF6", // Purple/Indigo
+  converted: "#10B981", // Green
+  lost: "#64748B",      // Slate/Gray
 };
 
 export function LeadPipelineFunnel() {
   const [stages, setStages] = useState<{ label: string; count: number; color: string }[]>([]);
   const [conversionRate, setConversionRate] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
       analyticsApi.getConversionFunnel(),
       analyticsApi.getDashboardStats(),
@@ -27,8 +29,34 @@ export function LeadPipelineFunnel() {
         setStages(mapped);
         setConversionRate(stats.conversionRate ?? 0);
       })
-      .catch(() => {});
+      .catch((err) => console.error("Pipeline load failed:", err))
+      .finally(() => setLoading(false));
   }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-zinc-900 border border-white/5 rounded-xl p-4 animate-pulse">
+        <div className="h-4 w-24 bg-zinc-800 rounded mb-4" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="h-3 w-16 bg-zinc-800 rounded shrink-0" />
+              <div className="flex-1 h-6 bg-zinc-850 rounded-md" />
+              <div className="h-3 w-6 bg-zinc-800 rounded shrink-0" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (stages.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-white/5 rounded-xl p-4 flex flex-col items-center justify-center min-h-[180px]">
+        <span className="text-zinc-500 text-xs font-sans">No pipeline stage data found.</span>
+      </div>
+    );
+  }
 
   const maxCount = stages.length > 0 ? Math.max(...stages.map((s) => s.count)) : 1;
 

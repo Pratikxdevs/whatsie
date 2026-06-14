@@ -4,37 +4,10 @@ export type Platform = 'whatsapp';
 
 // ── AI Providers ────────────────────────────────────────────────────────
 
-export type AiEngine =
-  | 'openai'
-  | 'anthropic'
-  | 'gemini'
-  | 'groq'
-  | 'mistral'
-  | 'cohere'
-  | 'xai'
-  | 'together'
-  | 'fireworks'
-  | 'bedrock'
-  | 'ollama'
-  | 'openrouter'
-  | 'cerebras'
-  | 'deepseek';
+export type AiEngine = 'openrouter';
 
 export const AI_ENGINE_CONFIG: Record<AiEngine, { label: string; color: string }> = {
-  groq:       { label: 'Groq',        color: '#F55036' },
-  openai:     { label: 'OpenAI',      color: '#10A37F' },
-  anthropic:  { label: 'Anthropic',   color: '#D97706' },
-  gemini:     { label: 'Google Gemini', color: '#4285F4' },
-  mistral:    { label: 'Mistral AI',  color: '#FF7000' },
-  cohere:     { label: 'Cohere',      color: '#39594D' },
-  xai:        { label: 'xAI (Grok)',  color: '#FFFFFF' },
-  together:   { label: 'Together AI', color: '#6366F1' },
-  fireworks:  { label: 'Fireworks AI', color: '#FF4D00' },
-  bedrock:    { label: 'AWS Bedrock', color: '#FF9900' },
-  ollama:     { label: 'Ollama (Local)', color: '#22C55E' },
   openrouter: { label: 'OpenRouter',  color: '#6366F1' },
-  cerebras:   { label: 'Cerebras',    color: '#00B4D8' },
-  deepseek:   { label: 'DeepSeek',    color: '#0066FF' },
 };
 
 // ── Bot Status ──────────────────────────────────────────────────────────
@@ -54,6 +27,7 @@ export interface Bot {
   maxTokens: number;
   systemPrompt: string;
   apiKey?: string;
+  model?: string;
   activeLeads: number;
   messagesToday: number;
   lastConnected: string | null;

@@ -11,6 +11,7 @@ export const createBotSchema = z.object({
   bot_token: z.string().max(5000).optional(),
   temperature: z.number().min(0).max(2).optional(),
   max_tokens: z.number().int().min(1).max(100000).optional(),
+  model: z.string().max(250).optional(),
 });
 
 export type CreateBotInput = z.infer<typeof createBotSchema>;
