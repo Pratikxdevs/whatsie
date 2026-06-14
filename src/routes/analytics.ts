@@ -15,7 +15,7 @@ router.use(authenticateToken);
 router.get('/message-volume', async (req, res) => {
   try {
     const tenantId = (req as AuthenticatedRequest).user!.tenantId;
-    const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+    const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 90);
     const platform = req.query.platform as string | undefined;
 
     const startDate = new Date();
