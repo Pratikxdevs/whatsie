@@ -1,288 +1,248 @@
-# CrmV2 — Code Conventions & Patterns
+# Code Conventions
 
-## TypeScript Configuration
+_Last updated: 2026-06-14_
 
-- **Strict mode** enabled (`"strict": true` in tsconfig.json)
-- Target: ES2022, Module: CommonJS
-- Root dir: `./src`, output: `./dist`
-- `esModuleInterop: true`, `forceConsistentCasingInFileNames: true`
-- `skipLibCheck: true`, `resolveJsonModule: true`
-- Test files excluded from compilation: `src/**/*.test.ts`, `src/__tests__/**`
-- No ESLint or Prettier config files present — formatting is manual/convention-based
+## TypeScript Config
 
-## Import & Export Patterns
+**Backend (`tsconfig.json`):**
+- Target: ES2020
+- Module: CommonJS (Node.js)
+- Strict mode: enabled
+- Path aliases: `module-alias` package for `@/` → `src/`
 
-- **Named exports** for utilities, constants, types, and functions
-- **Default exports** only for Express routers (`export default router`)
-- **Barrel exports** via `src/schemas/index.ts` re-exporting all schemas and types
-- Named type exports co-located with their schema: `export type CreateLeadInput = z.infer<typeof createLeadSchema>`
+**Frontend (`frontend/tsconfig.json`):**
+- Target: ES2020
+- Module: ESNext (Vite handles bundling)
+- Path alias: `@/` → `./src` (via Vite resolve config)
+- JSX: react-jsx
 
-### Import Order (observed convention, not enforced)
-
-1. Node built-ins (`import express from 'express'`, `import crypto from 'crypto'`)
-2. Third-party libraries (`import jwt from 'jsonwebtoken'`, `import { z } from 'zod'`)
-3. Local modules relative to current file (`../db/prisma`, `../config/logger`)
-4. Type-only imports where applicable (`import type { Request } from 'express'`)
-
-### Import Style
-
-- `import x from 'y'` for default exports
-- `import { x, y } from 'z'` for named exports
-- `import * as X from 'y'` rarely (e.g., `import * as Sentry from '@sentry/node'`)
-- Dynamic `await import()` for lazy-loaded modules (e.g., providers, adapters)
-
-## Module Organization
-
-```
-src/
-├── adapters/        # Platform adapters (Evolution API for WhatsApp)
-├── ai/              # AI provider integrations
-├── AiInteg/         # AI bridge endpoints
-├── api/             # Auth API (Clerk integration)
-├── billing/         # Usage recording, quota tracking
-├── config/          # Logger configuration
-├── crm/             # CRM domain logic
-├── db/              # Prisma client singleton
-├── debug/           # Debug server, log ring buffer
-├── errors/          # Error code registry
-├── metrics/         # Prometheus counters/histograms
-├── middleware/       # Express middleware (auth, validate, tenant, quota, rateLimit)
-├── normalizer/      # Platform-specific webhook normalization
-├── platforms/       # Platform abstractions
-├── queue/           # BullMQ queue setup
-├── rateLimiter/     # Rate limiting utilities
-├── router/          # Legacy router
-├── routes/          # Express route handlers (one file per domain)
-├── schemas/         # Zod validation schemas (organized by domain subdirectories)
-├── services/        # Business logic services (class-based, static methods)
-├── utils/           # Pure utility functions
-└── workers/         # BullMQ background workers
-```
+---
 
 ## Naming Conventions
 
-### Files
+| Element          | Convention         | Example                          |
+|------------------|--------------------|----------------------------------|
+| Files (backend)  | camelCase          | `evolutionApi.ts`, `auth.ts`     |
+| Files (frontend) | PascalCase (components) | `AddBotModal.tsx`, `BotsPage.tsx` |
+| Files (frontend) | camelCase (services) | `api.ts`, `socketManager.ts`   |
+| Classes          | PascalCase         | `WhatsAppAdapter`, `SessionManager` |
+| Interfaces       | PascalCase         | `AuthenticatedRequest`, `AiOutput` |
+| Functions        | camelCase          | `createInstance()`, `generateAiResponse()` |
+| Constants        | SCREAMING_SNAKE_CASE | `TENANT_MODELS`, `ERROR_DESCRIPTIONS` |
+| Env vars         | SCREAMING_SNAKE_CASE | `CLERK_SECRET_KEY`, `EVOLUTION_API_URL` |
+| DB model names   | PascalCase (Prisma) | `BillingUsage`, `WorkflowExecution` |
+| React components | PascalCase (named export) | `export function AddBotModal()` |
+| Hooks            | `use` prefix       | `useAiKeyStatus`, `useKeyVault` |
 
-- **kebab-case** for all files: `leads.ts`, `workflowEngine.ts`, `tenant-isolation.test.ts`
-- Test files: `*.test.ts` or `*.spec.ts`
-- Schema subdirectories: `schemas/auth/`, `schemas/leads/`, `schemas/bots/`
+---
 
-### Functions & Variables
+## Error Handling Pattern
 
-- **camelCase** for functions and variables: `authenticateToken`, `validateBody`, `createAppError`
-- **PascalCase** for classes: `WorkflowEngine`, `SessionManager`
-- **PascalCase** for interfaces/types: `AuthenticatedRequest`, `WorkflowResponse`, `NormalizedMessage`
-- **UPPER_SNAKE_CASE** for constants: `PLAN_LIMITS`, `PHONE_RE`, `EMAIL_RE`, `DEV_TENANT_ID`
-- **camelCase** for Prisma exports: `prisma` (singleton instance)
+**Backend structured errors (src/errors/codes.ts):**
+```ts
+// Error codes registered as constants: API_001, DB_003, WA_004 etc.
+createAppError(ErrorCode.API_004, 'base64 is required')
+// Returns: { code, message, detail, meta, timestamp }
+```
 
-### Route Files
-
-- File names match their domain: `leads.ts`, `conversations.ts`, `billing.ts`
-- Router variable is always `const router = Router()`
-- Default export: `export default router`
-
-### Schema Files
-
-- Organized in domain subdirectories: `schemas/leads/create.ts`, `schemas/auth/login.ts`
-- Schema variable naming: `createLeadSchema`, `updateLeadSchema`, `loginSchema`
-- Type export: `export type CreateLeadInput = z.infer<typeof createLeadSchema>`
-- Barrel re-export in `schemas/index.ts`
-
-## Express Route Patterns
-
-### Standard Route Structure
-
-```typescript
-import { Router } from 'express';
-import { prisma } from '../db/prisma';
-import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
-import { logger } from '../config/logger';
-import { validateBody } from '../middleware/validate';
-import { createAppError, ErrorCode } from '../errors/codes';
-
-const router = Router();
-
-// Apply auth to all routes
-router.use(authenticateToken);
-
-// CRUD routes with try/catch, structured errors, and logger context
+**Route handler pattern:**
+```ts
 router.get('/', async (req, res) => {
   try {
-    const tenantId = (req as AuthenticatedRequest).user!.tenantId;
-    // ... Prisma query ...
+    // ... logic
     return res.json({ data });
   } catch (err: any) {
-    logger.error({ err }, 'Description of failure');
-    return res.status(500).json(createAppError(ErrorCode.SYS_003, 'Internal Server Error'));
+    logger.error({ err }, 'Context message');
+    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
   }
 });
-
-export default router;
 ```
 
-### Key Patterns
-
-- **Tenant scoping**: Every query includes `tenantId` from `req.user!.tenantId`
-- **Try/catch wrapping**: All async route handlers wrapped with structured error logging
-- **Validation middleware**: `validateBody(schema)` applied per-route, not globally
-- **Error responses**: Use `createAppError(ErrorCode.XXX, 'detail')` for consistent error shape
-- **Auth applied per-router**: `router.use(authenticateToken)` at top of router, not per-route
-
-### Route Mounting (src/index.ts)
-
-- Routes mounted with path prefix: `app.use('/api/leads', leadsRouter)`
-- Rate limiters applied at mount point: `app.use('/api', apiRateLimiter)`
-- Webhook routes unauthenticated: `app.use('/api/webhooks', webhookRouter)`
-
-## Middleware Patterns
-
-### Validation Middleware (`validate.ts`)
-
-- Factory functions: `validateBody(schema)`, `validateQuery(schema)`, `validateParams(schema)`
-- Uses `schema.safeParse()` (not `.parse()`) to avoid throwing
-- Attaches parsed/stripped data back to `req.body`/`req.query`/`req.params`
-- Returns 400 with `createAppError(ErrorCode.API_004, 'Validation failed', { errors })`
-
-### Authentication Middleware (`auth.ts`)
-
-- `authenticateToken` — dual-mode: supports Clerk JWT and system-issued API keys.
-- Extends Express Request: `interface AuthenticatedRequest extends Request { user?: { id, tenantId, role } }`
-- Strict fail-closed verification. No dev bypasses permitted.
-- API keys hashed with SHA-256 before database lookup.
-
-### Tenant Middleware (`tenant.ts`)
-
-- Uses `AsyncLocalStorage` for request-scoped tenant context
-- `tenantContext.run({ tenantId }, () => next())` pattern
-- Consumed by Prisma extension to set PostgreSQL RLS context
-
-### Error Response Shape
-
-All errors follow the structure defined in `errors/codes.ts`:
-
-```typescript
-{
-  code: 'AUTH_001',           // Domain error code
-  message: 'Description...',  // Human-readable from ERROR_DESCRIPTIONS
-  detail: 'Optional extra',   // Context-specific detail
-  meta: { ... },              // Optional metadata
-  timestamp: '2026-01-01T00:00:00.000Z'
+**Worker error handling:**
+```ts
+try {
+  // ... processing
+} catch (error) {
+  log.error({ err: error, jobId: job.id }, 'Fatal error');
+  throw error; // BullMQ retries (up to 5 attempts with exponential backoff)
 }
 ```
 
-## Prisma Usage Patterns
+**Frontend error interceptor (api.ts):**
+```ts
+// 401/403 → logout + redirect to /login
+// 5xx → toast error
+// Network error → toast "Cannot reach server"
+// All errors logged via errorLog.logApiError()
+```
 
-### Client Singleton (`db/prisma.ts`)
+---
 
-- Global singleton with hot-reload guard: `globalThis.__prisma ?? new PrismaClient()`
-- Only stores on global in non-production to prevent connection pool exhaustion
+## API Response Format
 
-### Tenant Global Middleware Integration
+**Success (list):**
+```json
+{ "conversations": [...], "total": 42, "page": 1, "limit": 20 }
+```
 
-- Extended PrismaClient intercepts queries for `TENANT_MODELS` and automatically applies `{ where: { tenantId } }` or `{ data: { tenantId } }`.
-- Uses `AsyncLocalStorage` from `tenantContext` to securely resolve the current tenant.
-- Completely abstracts tenant filtering from business logic, throwing `CRITICAL_SECURITY_ALERT` if a tenantId is missing.
+**Success (single):**
+```json
+{ "message": { "id": "...", "content": "..." } }
+```
 
-### Query Patterns
+**Error:**
+```json
+{ "error": "Human-readable message", "details": "Technical detail" }
+```
+Or structured:
+```json
+{ "code": "API_004", "message": "...", "detail": "...", "meta": null, "timestamp": "..." }
+```
 
-- Always include `tenantId` in `where` clauses (defense-in-depth, RLS is primary)
-- Use `findMany` with `include` for nested relations
-- Use `findFirst` for single-record lookups
-- Pagination: `skip`/`take` with `count` for total
-- Transactions via `$transaction` callback
+---
 
-## Error Handling Patterns
+## Middleware Pattern
 
-### Structured Error Codes
+Route-level middleware applied via `router.use()`:
+```ts
+const router = Router();
+router.use(authenticateToken);    // auth first
+router.use(validateBody(schema)); // then validation
+router.get('/', handler);
+```
 
-- Format: `{DOMAIN}_{NUMBER}` (e.g., `AUTH_001`, `DB_003`, `WA_004`)
-- Domains: API, DB, AUTH, WA (WhatsApp), Q (Queue), WS (WebSocket), SYS (System)
-- Registry in `errors/codes.ts` with descriptions and factory function
+Middleware factory pattern (for validation):
+```ts
+export const validateBody = (schema: ZodSchema) => (req, res, next) => {
+  const result = schema.safeParse(req.body);
+  if (!result.success) return res.status(400).json({ error: result.error });
+  req.body = result.data;
+  next();
+};
+```
 
-### Route-Level Error Handling
+---
 
-```typescript
-catch (err: any) {
-  logger.error({ err }, 'Contextual description');
-  return res.status(500).json(createAppError(ErrorCode.SYS_003, 'Internal Server Error'));
+## Service Layer Pattern
+
+Services are class-based with static methods:
+```ts
+export class SessionManager {
+  static async getWorkflowState(tenantId, userId): Promise<WorkflowState> {}
+  static async pushMessage(tenantId, userId, message): Promise<void> {}
 }
 ```
 
-- Never expose raw error messages to clients
-- Log full error object with structured context
-- Return generic error codes to client
+Adapter functions are plain async functions:
+```ts
+export async function createInstance(opts: CreateInstanceOptions) { ... }
+export async function sendText(instanceName: string, opts: SendTextOptions) { ... }
+```
 
-### Non-Blocking Error Patterns
+---
 
-- Quota check failures are swallowed (allow request to proceed)
-- Billing usage recording errors are swallowed (don't block user operations)
-- Startup sync failures are caught and logged as warnings
+## Frontend Conventions
 
-## Logging Approach (Pino)
+**Component structure:**
+```tsx
+// Named export (not default)
+export function AddBotModal({ isOpen, onClose }: Props) {
+  // hooks at top
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  
+  // event handlers
+  const handleSubmit = async () => {};
+  
+  // JSX return
+  return <Dialog open={isOpen}>...</Dialog>;
+}
+```
 
-### Configuration (`config/logger.ts`)
+**API calls in pages:**
+```tsx
+// useEffect + useState pattern (no React Query/SWR)
+useEffect(() => {
+  const fetch = async () => {
+    try {
+      setLoading(true);
+      const data = await leadApi.getLeads();
+      setLeads(data);
+    } catch { /* toast shown by interceptor */ } 
+    finally { setLoading(false); }
+  };
+  fetch();
+}, []);
+```
 
-- Pino with `pino-pretty` transport in development (colorized, timestamped)
-- Production: plain JSON logs to stdout
-- Log level: `LOG_LEVEL` env var, defaults to `info`
-- ISO timestamps via `pino.stdTimeFunctions.isoTime`
+**Styling:** Tailwind CSS utility classes via `cn()` helper:
+```tsx
+import { cn } from '@/lib/utils';
+<div className={cn('base-class', condition && 'conditional-class')} />
+```
 
-### PII Redaction
+---
 
-- Automatic redaction of phone numbers, email addresses, and API keys
-- Object key inspection: keys containing `key`, `secret`, or `token` get first 4 chars + `****`
-- `redactObject()` applied to logger child context
+## Import Style
 
-### Context Logging
+**Backend:** Relative imports only (no barrel index.ts for most modules):
+```ts
+import { prisma } from '../db/prisma';
+import { logger } from '../config/logger';
+```
 
-- `getContextLogger(tenantId, module, context)` — creates child logger with tenant + module context
-- Structured log objects: `logger.error({ err, tenantId }, 'message')`
-- Debug server integration via `setDebugLogger()` for real-time log streaming
+**Frontend:** Both relative and `@/` alias:
+```ts
+import { useAuth } from '@/contexts/AuthContext';
+import { botApi } from './api';
+```
 
-## Environment Variable Management
+---
 
-### Validation (`utils/env.ts`)
+## Logging
 
-- Zod schema validates all env vars at startup
-- Required: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` (min 32 chars), `GATEWAY_SECURITY_TOKEN`, `EVOLUTION_API_*`
-- Optional with format validation: `FRONTEND_URL`, `SENTRY_DSN`, `DEFAULT_TENANT_ID`, `DEV_AUTH_BYPASS`, `NODE_ENV`
-- Fail-fast: throws with detailed error messages if validation fails
+**Backend (Pino):**
+```ts
+// Structured context logging — always pass object first, then message
+logger.info({ tenantId, botId }, 'Bot status synced');
+logger.error({ err, jobId }, 'Fatal error processing job');
 
-### Startup Validation (`index.ts`)
+// Context logger with module binding
+const log = getContextLogger(tenantId, 'Worker.AI');
+log.info({ intent }, 'AI response generated');
+```
 
-- `requiredEnvs` array checked before anything else
-- `process.exit(1)` with `logger.fatal()` on missing envs
-- Prisma migrations auto-run on startup (`prisma migrate deploy`)
+**PII Redaction (auto-applied):**
+- Phone numbers: last 4 digits masked `5511999****`
+- Emails: local part after first char masked `j***@example.com`
+- API keys: after first 4 chars masked `sk_l****`
+- Fields with 'key'/'secret'/'token' in name: auto-masked in log objects
 
-## Metrics & Observability
+**Debug server:** All logs also stream to ring-buffer at port 9222 via `addLog()`.
 
-### Prometheus (`metrics/index.ts`)
+---
 
-- Custom registry (not default) for metrics isolation
-- Default metrics: process, GC, event loop
-- Counters: `messages_received_total`, `messages_sent_total`, `errors_total`
-- Histograms: `http_request_duration_seconds` (with route/method/status labels)
-- Gauges: `queue_depth`
-- `/metrics` endpoint in `index.ts`
+## Environment Config
 
-### Sentry Integration
+Validated at startup with fail-fast (process.exit(1) if missing):
+```ts
+const requiredEnvs = [
+  'DATABASE_URL', 'REDIS_URL', 'GATEWAY_SECURITY_TOKEN', 'JWT_SECRET',
+  'EVOLUTION_API_SECRET', 'EVOLUTION_API_KEY', 'EVOLUTION_API_URL',
+  'CLERK_SECRET_KEY', 'CLERK_PUBLISHABLE_KEY', 'OPENROUTER_API_KEY',
+];
+```
 
-- Conditional init: only if `SENTRY_DSN` env var is set
-- 10% trace sample rate
-- Express error handler via `Sentry.setupExpressErrorHandler(app)`
+Additional required: `FRONTEND_URL` (CORS), `API_KEY_PEPPER` (required in production).
 
-## Security Patterns
+Frontend env: `VITE_CLERK_PUBLISHABLE_KEY` (required), `VITE_API_URL` (optional), `VITE_USE_MOCK` (optional).
 
-- Helmet with custom CSP directives
-- CORS: explicit allowlist for dev origins, configurable in production
-- HMAC SHA-256 webhook signature verification for WhatsApp
-- API keys stored as SHA-256 hashes, never plaintext
-- Rate limiting: Redis-backed with separate auth (5/15min) and API (100/min) limiters
-- Content sanitization via `dompurify` (dependency present)
+---
 
-## Service Layer Patterns
+## Test Conventions
 
-- Services are **classes with static methods** (not instantiated): `WorkflowEngine.checkTrigger()`
-- Interfaces defined for return types: `WorkflowResponse`
-- Services import Prisma directly, no dependency injection
-- Business logic in services, not in route handlers
+- **Framework:** Vitest (backend) — `describe/it/expect` globals
+- **File naming:** `*.test.ts` co-located or in `__tests__/` subdirectory
+- **Mock pattern:** `vi.mock('../path')` with manual mocks
+- **Setup file:** `src/__tests__/setup.ts` — global test setup
+- **Helpers:** `src/__tests__/helpers.ts` — shared test utilities
