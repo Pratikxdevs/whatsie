@@ -404,5 +404,43 @@ router.get('/:id/connection-status', async (req, res) => {
   }
 });
 
+// POST /api/workspaces/:id/validate-key — Validate AI API key stored in bot config
+router.post('/:id/validate-key', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tenantId = (req as AuthenticatedRequest).user!.tenantId;
+
+    const bot = await prisma.bot.findFirst({ where: { id, tenantId } });
+    if (!bot) {
+      return res.status(404).json({ error: 'Workspace not found.' });
+    }
+
+    const config = bot.config && typeof bot.config === 'object' ? (bot.config as any) : {};
+    const apiKey = req.body?.key || config.api_key;
+    const provider = req.body?.provider || config.ai_engine || 'openrouter';
+
+    if (!apiKey) {
+      return res.json({ valid: false, error: 'No API key configured' });
+    }
+
+    // Minimal validation: check key is non-empty and has a known prefix
+    const prefixes: Record<string, string[]> = {
+      openrouter: ['sk-or-'],
+      groq: ['gsk_'],
+      openai: ['sk-'],
+    };
+    const knownPrefixes = prefixes[provider] || [];
+    const hasValidPrefix = knownPrefixes.length === 0 || knownPrefixes.some((p) => apiKey.startsWith(p));
+
+    if (!hasValidPrefix) {
+      return res.json({ valid: false, error: `API key does not look like a valid ${provider} key` });
+    }
+
+    return res.json({ valid: true, provider, model: config.model || null });
+  } catch (err: any) {
+    logger.error({ err }, 'Workspaces route error validating key');
+    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+  }
+});
 
 export default router;
