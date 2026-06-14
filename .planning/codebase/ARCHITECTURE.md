@@ -1,165 +1,121 @@
-# Architecture
+# ARCHITECTURE.md — System Design
+**Last mapped:** 2026-06-14
 
-_Last updated: 2026-06-14 (after auth stabilization + bot sync hardening)_
+---
 
-## System Overview
+## Pattern
 
-**Whatsie CRM** is a multi-tenant SaaS that connects WhatsApp (via Evolution API) to an AI-powered CRM pipeline. Businesses onboard, connect a WhatsApp bot, and the system auto-processes inbound messages through AI/workflow logic, managing leads — all isolated per tenant.
-
-**Core Value Flow:**
-```
-WhatsApp User → Evolution API Webhook → BullMQ → AI Pipeline → WhatsApp Reply
-                                                       ↓
-                                               Lead/Conversation DB
-                                                       ↓
-                                               Real-time Dashboard (Socket.IO)
-```
-
-## Architecture Pattern
-
-- **Backend:** Monolith Express 5 app — layered (routes → middleware → services → adapters → DB)
-- **Frontend:** SPA (Vite + React 19), Clerk-authenticated, Socket.IO connected
-- **Async:** BullMQ worker runs in-process (imported at startup via `import './workers/index'`)
-- **Multi-tenancy:** AsyncLocalStorage tenant context + Prisma query extension (auto-inject tenantId)
-- **Real-time:** Socket.IO on shared HTTP server, rooms keyed by `tenantId`
-
-## Middleware Chain (in order)
+**Multi-tenant SaaS — Event-driven backend with REST/WebSocket frontend**
 
 ```
-1. helmet()                      — security headers (CSP, HSTS, etc.)
-2. requestId                     — X-Request-ID injection
-3. express.json()                — body parsing
-4. clerkMiddleware()             — populates getAuth(req) globally
-5. Prometheus timer              — per-request duration tracking
-6. CORS                          — strict: FRONTEND_URL only
-7. [route] authenticateToken     — Clerk JWT or X-API-KEY
-8. [route] tenantContext.run()   — AsyncLocalStorage scope start
-9. requestLoggerMiddleware       — Pino + debug ring buffer
-10. Sentry handler               — if SENTRY_DSN configured
+[WhatsApp User]
+      │
+      ▼
+[Evolution API] ──webhook──▶ POST /gateway/whatsapp/:tenantId
+                                   │
+                              gateway.ts validates HMAC signature
+                                   │
+                              normalizer/whatsapp.ts → NormalizedMessage
+                                   │
+                              BullMQ Queue (Redis)
+                                   │
+                              workers/index.ts
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+             SessionManager  IntentClassifier  RuleEngine
+                    │              │              │
+                    └──────────────┴──────────────┘
+                                   │
+                             WorkflowEngine
+                                   │
+                             AI Orchestrator (OpenRouter/Groq/OpenAI)
+                                   │
+                             ResponseRouter → WhatsAppAdapter
+                                   │
+                             Evolution API sendText
 ```
 
-## Route Map
+---
 
-| Mount                | Router                        | Auth    | Purpose                         |
-|----------------------|-------------------------------|---------|---------------------------------|
-| /api/webhooks        | routes/webhooks.ts            | svix    | Clerk user lifecycle events     |
-| /api/auth            | api/auth.ts                   | none    | Login/register (rate-limited)   |
-| /api/providers       | inline                        | none    | List AI providers               |
-| /api/whatsapp        | routes/whatsapp.routes.ts     | Clerk   | Legacy bot instance proxy       |
-| /api/whatsapp        | routes/whatsapp-chat.ts       | Clerk   | Chat/contacts/messages proxy    |
-| /api/workspaces      | routes/workspaces.ts          | Clerk   | Workspace/bot management        |
-| /api/conversations   | routes/conversations.ts       | Clerk   | Conversation + message API      |
-| /api/leads           | routes/leads.ts               | Clerk   | Lead management CRUD            |
-| /api/analytics       | routes/analytics.ts           | Clerk   | Dashboard stats                 |
-| /api/billing         | routes/billing.ts             | Clerk   | Usage records + AI logs         |
-| /api/ai              | AiInteg/endpoints.ts          | Clerk   | AI health, key verify, generate |
-| /api/credentials     | routes/credentials.ts         | Clerk   | Per-user AI API key vault       |
-| /gateway             | router/index.ts               | hmac    | Evolution API webhook receiver  |
-| /metrics             | inline                        | none    | Prometheus scrape               |
-| /health              | inline                        | none    | Liveness check                  |
-| /ready               | inline                        | none    | Readiness (DB + Redis ping)     |
-
-## Multi-tenancy (Defense in Depth)
-
-1. **AsyncLocalStorage** (`tenantContext`): All authenticated requests run within `tenantContext.run({ tenantId })`.
-2. **Prisma Extension** (`src/db/prisma.ts`): `prisma` client auto-injects `tenantId` in all reads, writes, creates. **Fail-closed**: throws if querying tenant model without active context.
-3. **PostgreSQL RLS**: `SELECT set_config('app.current_tenant_id', tenantId, true)` on every tenant query.
-4. **`prismaUnfiltered`**: Bypass client for auth/webhook system operations.
-
-## Auth Flow
-
-**New user (webhook path):**
-```
-Register → Clerk fires user.created webhook → /api/webhooks/clerk (svix-verified)
-→ Create Tenant + User in DB → Update Clerk publicMetadata with tenantId
-→ API calls include Authorization: Bearer <Clerk JWT>
-→ authenticateToken: getAuth(req).userId → User lookup → tenantContext set
-```
-
-**JIT sync (fallback):**
-```
-Sign in → clerkId not in DB → clerkClient.users.getUser() → create Tenant+User
-→ Request continues with new tenant context
-```
-
-## Bot Lifecycle
+## Authentication Flow
 
 ```
-Create   → POST /api/workspaces → createInstance() → Bot(status: pending_qr)
-QR       → GET /instance/connect/:name → base64 QR → frontend QRCodeModal
-Scan     → User scans → Evolution fires CONNECTION_UPDATE webhook
-Connected → /gateway handler → Bot.status = 'connected'
-Startup  → On server boot: getConnectionState() for all non-terminal bots
-Logout   → logoutInstance() → Bot.status = 'disconnected'
-Delete   → deleteInstance() → Bot row deleted
+Frontend request
+      │
+      ├─ Has X-API-KEY header? → HMAC-SHA256 verify against DB (peppered)
+      │
+      └─ Has Authorization: Bearer <Clerk JWT>?
+              │
+              ├─ getAuth(req).userId → verify with Clerk
+              │
+              └─ JIT sync: ensure User row exists in DB for tenantId
 ```
 
-## Message Pipeline
+---
+
+## Real-time (Socket.IO)
+
+- Server-side: `io.to(tenantId).emit(event, data)` — tenant-isolated rooms
+- Client-side: `socketManager.ts` singleton — connects once on auth
+- Events: `new_message`, `bot_status_change`, `conversation_update`, `lead_update`
+- Auth: Clerk JWT passed in `auth` handshake object, verified server-side
+
+---
+
+## Multi-tenancy
+
+- Every DB model has `tenantId` field
+- All routes extract `tenantId` from `req.user.tenantId` (set by auth middleware)
+- `src/middleware/tenant.ts` exists but is **not used in index.ts** — routes rely on auth middleware alone
+- No PostgreSQL RLS — isolation enforced at query level only
+
+---
+
+## Key Abstractions
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Auth middleware | `src/middleware/auth.ts` | Clerk JWT + API key dual-strategy |
+| Request validation | `src/middleware/validate.ts` | Zod schema validation |
+| HTTP proxy | `src/middleware/httpProxy.ts` | Axios with circuit breaker + retry + cache |
+| EvoAPI adapter | `src/adapters/evolutionApi.ts` | Full typed Evolution API client |
+| WhatsApp adapter | `src/adapters/whatsapp.adapter.ts` | Outbound message sending |
+| AI orchestrator | `src/ai/orchestrator.ts` | Multi-provider AI dispatch |
+| Worker | `src/workers/index.ts` | BullMQ consumer, pipeline orchestration |
+| CRM service | `src/crm/crmService.ts` | Lead/conversation DB operations |
+| Response router | `src/router/index.ts` | Routes AI reply to correct platform adapter |
+
+---
+
+## Data Flow: Inbound Message
 
 ```
-1. WA user sends message → Evolution fires webhook → /gateway/whatsapp/:tenantId
-2. HMAC-SHA256 validation (EVOLUTION_API_SECRET)
-3. Normalizer → NormalizedMessage
-4. whatsappQueue.add(job)
-
-BullMQ Worker (concurrency: 5):
-5. SessionManager.getWorkflowState()  — Redis session load
-6. processInboundMessageDbUpdates()   — upsert Lead + Conversation + Message
-7. Socket.IO emit new_message (in) to tenant room
-8. SessionManager.pushMessage()       — append to context window
-9. Check botPaused (human takeover flag)
-10. WorkflowEngine.processStep()      — mid-flow step
-11. IntentClassifier.classify()       — rule-based intent
-12. WorkflowEngine.checkTrigger()     — intent → workflow trigger
-13. RuleEngine.evaluate()             — keyword/rule match → immediate reply
-14. generateAiResponse()              — OpenRouter LLM fallback (JSON output)
-15. WhatsAppAdapter.sendMessage()     — rate-limited dispatch
-16. Socket.IO emit new_message (out)  — frontend sees response instantly
-17. recordBillingUsage()              — usage tracking
+1. Evolution API → POST /gateway/whatsapp/:tenantId
+2. HMAC-SHA256 signature validation (EVOLUTION_API_SECRET)
+3. normalizeWhatsAppWebhook() → NormalizedMessage
+4. bullmq.add('process-message', normalizedMessage)
+5. worker picks up job:
+   a. SessionManager.getOrCreate(conversationId)
+   b. CrmService.findOrCreateLead(phone)
+   c. IntentClassifier.classify(text)
+   d. RuleEngine.evaluate(intent, rules)
+   e. WorkflowEngine.execute(workflow)
+   f. AI Orchestrator → LLM response
+   g. ResponseRouter.route(platform) → WhatsAppAdapter.sendMessage()
+   h. BillingUsage.record('messages_sent')
 ```
 
-## Frontend Architecture
+---
 
-### Routing
-```
-ClerkProvider → Router → AuthProvider
-  ├── /login → <SignIn> (Clerk hosted)
-  ├── /register → <SignUp> (Clerk hosted)
-  └── <ProtectedRoute>
-      └── <AppLayout>
-          ├── /dashboard, /bots, /leads, /conversations, /analytics, /billing, /settings
-```
+## ⚠️ Architecture Issues
 
-### Key Patterns
-- **State:** No Redux/Zustand — local component state + Clerk hooks
-- **API:** `frontend/src/services/api.ts` — Axios with Clerk Bearer token interceptor
-- **401/403 handler:** Calls `window.__clerkLogout` → toast → redirect to `/login`
-- **Real-time:** `socketManager` singleton — one WS connection, listener replay, race-proof emit
-- **Mock mode:** `VITE_USE_MOCK=true` disables Vite proxy for frontend-only dev
+1. **`src/middleware/tenant.ts` is dead** — imported nowhere in `src/index.ts`. Tenant enforcement relies entirely on auth middleware. Any route that skips `authenticateToken` has zero tenant isolation.
 
-## Data Layer (Prisma Models)
+2. **`src/router/index.ts` (ResponseRouter) imports WhatsApp adapter** but also has references to `NormalizedMessage.platform` checks — still has the multi-platform branching logic even after platform removal.
 
-| Model             | Tenant-scoped | Purpose                                |
-|-------------------|---------------|----------------------------------------|
-| Tenant            | Root          | Top-level org (plan, status)           |
-| User              | Yes           | CRM user; clerkId linked               |
-| Bot               | Yes           | WhatsApp instance; sessionName unique  |
-| Lead              | Yes           | Contact; created from inbound messages |
-| Conversation      | Yes           | Thread between Lead ↔ Bot             |
-| Message           | Yes           | Individual messages (in/out)           |
-| Workflow          | Yes           | Multi-step intent-triggered flows      |
-| WorkflowExecution | Yes           | Active execution state per lead        |
-| ApiKey            | Yes           | HMAC-SHA256 hashed API keys            |
-| Event             | Yes           | Audit events log                       |
-| BillingUsage      | Yes           | Usage metrics by period                |
-| AiLog             | Yes           | LLM token usage + cost                 |
-| AuditLog          | Yes           | Security/admin action trail            |
-| RefreshToken      | No            | Legacy JWT refresh tokens              |
-| UserCredential    | User-scoped   | Per-user AI provider API key vault     |
+3. **`src/normalizer/` contains `whatsapp.test.ts`** — test file living in non-test directory alongside production code.
 
-## Real-time Communication
+4. **Debug server (`src/debug/server.ts`)** runs on a separate port (9222) with its own HTTP server — not integrated into Express middleware chain. Has raw `innerHTML` assignments with filtered user data (XSS risk if filter bypassed).
 
-- **Protocol:** Socket.IO over shared `http.createServer(app)`
-- **Auth:** Clerk JWT via `verifyToken()` in socket handshake middleware; fallback to API key
-- **Rooms:** `tenantId` — auto-joined on connect, re-joined on reconnect
-- **Events emitted:** `new_message`, `connection_status`, `error`
+5. **`src/api/auth.ts`** implements a full register/login flow with bcrypt + JWT but **Clerk is the production auth**. This entire file is dead code in production.
