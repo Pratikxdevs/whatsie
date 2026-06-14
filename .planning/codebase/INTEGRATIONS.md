@@ -1,96 +1,79 @@
-# INTEGRATIONS.md — External Services & APIs
-**Last mapped:** 2026-06-14
-
----
+# INTEGRATIONS
+**Updated:** 2026-06-15
+**Project:** CrmV2 — Whatsie WhatsApp AI CRM
 
 ## Evolution API (WhatsApp Gateway)
+- **URL**: `EVOLUTION_API_URL` env var (default: `http://localhost:8081`)
+- **Auth**: `EVOLUTION_API_KEY` header (`apikey: <key>`)
+- **Container**: `crmv2-evolution-api` (Docker port 8081 → 8080)
+- **Session name pattern**: `bot_<botId-no-dashes>` or `tenant_<tenantId>_bot`
+- **Key operations**:
+  - `POST /instance/create` — create WhatsApp session
+  - `GET /instance/connectionState/{sessionName}` — check connection status
+  - `POST /instance/restart/{sessionName}` — restart session
+  - `DELETE /instance/delete/{sessionName}` — delete session
+  - `POST /message/sendText/{sessionName}` — send outbound message
+  - `GET /instance/fetchInstances` — list all active sessions
+- **Webhook**: Evolution pushes `POST /api/gateway/webhook/whatsapp` on each inbound event
+- **Webhook sig**: `EVOLUTION_API_SECRET` HMAC validation (currently bypassed for dev — see CONCERNS)
+- **Normalizer**: `src/normalizer/whatsapp.ts` maps Evolution payload → `NormalizedMessage`
+- **Adapter**: `src/adapters/evolutionApi.ts` — axios client with typed methods
 
-- **URL:** `EVOLUTION_API_URL` (default `http://localhost:8081`)
-- **Auth:** `EVOLUTION_API_KEY` (apikey header) + `EVOLUTION_API_SECRET` (bearer for webhook validation)
-- **Adapter:** `src/adapters/evolutionApi.ts` — typed full adapter (628 lines)
-- **Webhook inbound:** `POST /gateway/whatsapp/:tenantId` → `src/routes/gateway.ts`
-- **Docker service:** `evoapicloud/evolution-api:latest` on port 8081→8080
-
-### ⚠️ SECURITY: Hardcoded credentials in docker-compose.yml
-```yaml
-AUTHENTICATION_API_KEY=429683C4C977415CAAFCCE10F7D57E11  # EXPOSED IN REPO
-POSTGRES_PASSWORD=CrmV2@2026                              # EXPOSED IN REPO
-```
-These must be moved to environment variables or Docker secrets.
-
----
+## OpenRouter AI
+- **URL**: `https://openrouter.ai/api/v1`
+- **Auth**: `Authorization: Bearer <OPENROUTER_API_KEY>` 
+- **Headers required**: `HTTP-Referer: https://whatsie.ai`, `X-Title: Whatsie CRM`
+- **Key operations**:
+  - `GET /auth/key` — verify API key, get credit balance and usage
+  - `GET /models` — fetch available models with pricing
+  - `POST /chat/completions` — AI response generation (via `openai` SDK configured to OpenRouter base URL)
+- **Frontend**: `/api/ai/verify` endpoint validates key + fetches models; stored per-tenant in DB
+- **Model selection**: Per-tenant, stored as `tenant.aiModel` in Prisma
+- **Timeout**: 8s for key verification; configurable for completions
 
 ## Clerk (Authentication)
+- **SDK**: `@clerk/express` backend, `@clerk/clerk-react` frontend
+- **Env vars**: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- **Flow**: `clerkMiddleware()` → `getAuth(req)` → lookup user in DB → set `req.user`
+- **JIT sync**: If user not in DB, `clerkClient.users.getUser()` + create tenant + upsert user
+- **Webhooks**: `POST /api/webhooks/clerk` — Svix signature validation → sync user events
+- **Frontend**: `<ClerkProvider>` wraps app; `useAuth()` for session token; `clerkBridge.ts` for non-React contexts
+- **Logout**: `clerkBridge.signOut()` called by API interceptor on 401/403
 
-- **Backend:** `@clerk/express ^2.1.19` — `clerkMiddleware()` + `getAuth()`
-- **Frontend:** `@clerk/clerk-react ^5.61.6`
-- **Webhook:** `POST /webhooks/clerk` via `svix` signature verification
-- **Env vars:** `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_WEBHOOK_SECRET`, `VITE_CLERK_PUBLISHABLE_KEY`
-- **JIT user sync:** On every authenticated request, user is synced to DB if not present
+## PostgreSQL Row-Level Security (RLS)
+- **Mechanism**: `SELECT set_config('app.current_tenant_id', tenantId, true)` before every query
+- **Implementation**: `src/db/prisma.ts` → `prisma.$extends` → `$allOperations` → injects `tenantId` in WHERE
+- **Fail-closed**: Any query to tenant-scoped models without active tenant context throws `CRITICAL SECURITY ALERT`
+- **Unfiltered client**: `prismaUnfiltered` bypasses tenant injection (used only for auth/webhook operations)
+- **Tenant models**: User, Bot, Lead, Conversation, Message, Workflow, WorkflowExecution, ApiKey, BillingUsage, AiLog
 
----
+## Redis / BullMQ
+- **URL**: `REDIS_URL` env (default: `redis://localhost:6379`)
+- **Connection**: `IORedis` with `maxRetriesPerRequest: null` for BullMQ compatibility
+- **Queue name**: `whatsapp-messages`
+- **Job options**: 5 attempts, exponential backoff (1min base), retain completed 24h, retain failed 7d
+- **Worker**: `src/workers/index.ts` — pulls jobs, calls `src/AiInteg/bridge.ts`
+- **DLQ worker**: `src/workers/dlq.ts` — handles permanently failed jobs
+- **Rate limiter**: `rate-limit-redis` for per-IP express-rate-limit store
 
-## OpenRouter / AI Providers
+## Debug Server (Port 9222)
+- **Auth**: `DEBUG_TOKEN` env var — required, `Authorization: Bearer <token>` header
+- **Endpoints**:
+  - `GET /` — NPM-style dashboard HTML
+  - `GET /api/logs?category=<cat>&level=<lvl>&limit=<n>` — query ring buffer
+  - `GET /api/categories` — per-category log counts
+  - `GET /api/stats` — request stats, error counts
+  - `GET /api/health` — service health checks with latency
+  - `GET /api/stream` — SSE live log stream
+  - `POST /api/log` — ingest log from frontend
+- **Ring buffer**: 2000 entries, FIFO
+- **Categories**: `frontend | backend | db | docker | api | ai | system`
+- **Dashboard**: 6-tab NPM error-box style UI, real-time SSE, expandable JSON meta
 
-- **Primary provider:** OpenRouter (`sk-or-*` keys)
-- **Other providers:** Groq (`gsk_*`), OpenAI (`sk-*`)
-- **Config:** `src/AiInteg/config.ts`, `src/ai/orchestrator.ts`
-- **Key source priority:** Bot `config.api_key` → user key → `OPENROUTER_API_KEY` env
-- **⚠️ Risk:** `|| ''` fallback on API key means silent empty-key calls if env not set
-
----
-
-## Sentry (Error Tracking)
-
-- **SDK:** `@sentry/node ^10.53.1`
-- **Init:** Conditional — only if `SENTRY_DSN` env is set
-- **Sample rate:** `tracesSampleRate: 0.1`
-- **File:** `src/index.ts` lines 41-43
-
----
-
-## Prometheus + Grafana (Observability)
-
-- **Metrics endpoint:** `GET /metrics` — bearer-token gated (`METRICS_TOKEN`)
-- **Collector:** prom-client, custom `httpRequestDurationSeconds` histogram
-- **Docker:** prom/prometheus on 9090, grafana/grafana on 3001
-- **⚠️ Grafana default password:** `GF_SECURITY_ADMIN_PASSWORD=admin` hardcoded in docker-compose
-
----
-
-## Redis
-
-- **Client:** `ioredis ^5.10.1`
-- **URL:** `REDIS_URL` env
-- **Uses:** BullMQ job queue, rate limiting (rate-limit-redis)
-- **Connection:** `src/queue/setup.ts`
-
----
-
-## PostgreSQL
-
-- **ORM:** Prisma `^6.19.3`
-- **URL:** `DATABASE_URL` env
-- **Migrations:** Auto-applied on startup via `npx prisma migrate deploy`
-- **Schema:** `prisma/schema.prisma`
-
----
-
-## Docker Compose Services
-
-| Service | Image | Port | Credentials |
-|---------|-------|------|-------------|
-| postgres | postgres:15-alpine | 7777 | `CrmV2@2026` ⚠️ hardcoded |
-| redis | redis:7-alpine | 6379 | none |
-| prometheus | prom/prometheus | 9090 | none |
-| grafana | grafana/grafana | 3001 | `admin` ⚠️ hardcoded |
-| evolution-api | evoapicloud/evolution-api | 8081 | `429683C4C977415CAAFCCE10F7D57E11` ⚠️ hardcoded |
-
----
-
-## Debug Server
-
-- **Port:** `DEBUG_PORT` env (default 9222)
-- **Auth:** Optional — `DEBUG_TOKEN` env bearer
-- **⚠️ Risk:** If `DEBUG_TOKEN` not set, debug server is completely open
-- **File:** `src/debug/server.ts`
+## Socket.IO (Real-time)
+- **Path**: default `/socket.io`
+- **Auth**: `socket.auth.token` → Clerk JWT verified on connection
+- **Tenant rooms**: `socket.join(tenantId)` on connect (auto, server-side)
+- **Events emitted**: `new_message`, `bot_status_update`, `lead_update`
+- **Client**: `socketManager.ts` singleton, avoids multiple connection instances
+- **Frontend logging**: connect/disconnect/reconnect/emit all logged to debug server

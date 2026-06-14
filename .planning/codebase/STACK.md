@@ -1,104 +1,85 @@
-# STACK.md — Technology Stack
-**Last mapped:** 2026-06-14
-**Project:** Whatsie (CrmV2)
-
----
+# STACK
+**Updated:** 2026-06-15
+**Project:** CrmV2 — Whatsie WhatsApp AI CRM
 
 ## Runtime
-
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| Language | TypeScript | ^6.0.3 |
-| Runtime | Node.js | ≥18 (ts-node / tsx) |
-| Frontend | React | ^19.2.4 |
-| Build tool | Vite | (via frontend/package.json) |
-| Package manager | npm | (package-lock.json) |
-
----
+- **Node.js**: ≥18 (ES2022 target, CommonJS modules)
+- **TypeScript**: `strict: true`, `skipLibCheck: true`, `esModuleInterop: true`
+- **Entry point**: `src/index.ts` via `tsx` (dev) / compiled `dist/` (prod)
 
 ## Backend Framework
+| Package | Version | Role |
+|---------|---------|------|
+| `express` | latest | HTTP server, routing |
+| `socket.io` | latest | Real-time WebSocket (tenant rooms) |
+| `bullmq` | latest | WhatsApp message queue (5 attempts, exponential backoff) |
+| `ioredis` | latest | Redis client for BullMQ + rate limiting |
+| `pino` + `pino-pretty` | latest | Structured JSON logging + dev pretty-print |
+| `helmet` | latest | Security headers |
+| `express-rate-limit` + `rate-limit-redis` | latest | Per-IP and per-tenant rate limiting |
+| `zod` | latest | Request body validation schemas |
+| `@clerk/express` | latest | JWT auth middleware + webhook processing |
+| `svix` | latest | Clerk webhook signature verification |
+| `@prisma/client` | latest | Postgres ORM with RLS integration |
+| `@sentry/node` | latest | Error tracking |
+| `prom-client` | latest | Prometheus metrics |
+| `openai` | latest | OpenRouter AI completions (compatible client) |
+| `axios` | latest | HTTP client for Evolution API calls |
+| `bcryptjs` | latest | Password hashing (legacy) |
+| `jsonwebtoken` | latest | JWT decode (Clerk verification delegation) |
+| `lru-cache` | latest | In-process caching |
+| `dompurify` | latest | HTML sanitization |
+| `libphonenumber-js` | latest | Phone number validation/formatting |
 
-- **Express** `^5.2.1` — HTTP server
-- **Socket.IO** `^4.8.1` — Real-time bidirectional events
-- **BullMQ** `^5.76.0` — Redis-backed job queue for message processing
-- **Prisma** `^6.19.3` — ORM, PostgreSQL adapter
+## Frontend Framework
+| Package | Role |
+|---------|------|
+| `react` + `react-dom` | UI framework |
+| `react-router-dom` | Client-side routing |
+| `vite` + `@vitejs/plugin-react` | Build tool + HMR |
+| `tailwindcss` + `tailwindcss-animate` | Utility CSS |
+| `@radix-ui/*` (30+ packages) | Headless accessible UI primitives |
+| `@clerk/clerk-react` | Auth UI + session management |
+| `sonner` | Toast notifications (used for error recovery CTAs) |
+| `axios` | API client with request/response interceptors |
+| `socket.io-client` | WebSocket singleton (socketManager.ts) |
+| `react-hook-form` + `@hookform/resolvers` | Form state + Zod validation |
+| `recharts` | Analytics charts |
+| `cmdk` | Command palette (model selector) |
+| `motion` | Animations |
+| `zod` | Schema validation (shared with backend) |
+| `lucide-react` | Icon library |
+| `date-fns` | Date utilities |
+| `libphonenumber-js` | Phone formatting (PhoneInput component) |
+| `vaul` | Drawer component |
+| `input-otp` | OTP input (legacy Telegram auth) |
+| `embla-carousel-react` | Carousel |
 
----
+## Database
+- **PostgreSQL 15** (Docker: port 7777 → 5432, named volume `postgres_data_v2`)
+- **Prisma ORM**: schema at `prisma/schema.prisma`, migrations in `prisma/migrations/`
+- **RLS**: `app.current_tenant_id` set per-request via `$executeRaw SELECT set_config(...)`
+- **Redis 7** (Docker: port 6379, named volume `redis_data`)
 
-## Frontend Stack
+## Auth
+- **Primary**: Clerk JWT — `clerkMiddleware()` upstream, `getAuth(req)` in `authenticateToken`
+- **Secondary**: API Key — HMAC-SHA256 + `API_KEY_PEPPER` server-side pepper, stored as hash
+- **JIT sync**: User auto-created in DB on first Clerk login if webhook missed
+- **Tenant context**: `AsyncLocalStorage` (tenantContext) propagated through all requests
 
-- **React Router** `^7.14.0`
-- **Clerk React** `^5.61.6` — Auth UI
-- **Radix UI** (full suite ~22 packages) — Headless components
-- **Tailwind CSS** + `tailwind-merge`, `tailwindcss-animate`
-- **Recharts** `^2.15.4` — Charts
-- **Lucide React** `^1.7.0` — Icons
-- **Sonner** `^2.0.7` — Toast notifications
-- **React Hook Form** + Zod — Form validation
-- **Socket.IO client** `^4.8.3`
-- **Motion** `^12.38.0` — Animations
+## Build Tooling
+- **Backend**: `tsc --noEmit` (typecheck), `tsx src/index.ts` (dev), `tsc` (prod build)
+- **Frontend**: `vite build` (prod), `vite dev` (dev, port 5173)
+- **DB**: `prisma migrate dev`, `prisma generate`
 
----
+## Test Infrastructure
+- **Runner**: Vitest (config inlined in package.json or vitest.config.ts)
+- **Test files**: `src/__tests__/` (18 test files), service-level `.test.ts` colocated
+- **Helpers**: `src/__tests__/helpers.ts`, `src/__tests__/setup.ts`
+- **Coverage**: `@vitest/coverage-v8`
+- **HTTP testing**: `supertest`
 
-## Security Libraries
-
-- **Helmet** `^8.2.0` — HTTP security headers (backend + frontend)
-- **express-rate-limit** `^7.5.0` — Rate limiting (backend)
-- **rate-limit-redis** `^4.3.1` — Distributed rate limit storage
-- **DOMPurify** `^3.4.5` — XSS sanitization (both layers)
-- **bcryptjs** `^3.0.3` — Password hashing
-- **jsonwebtoken** `^9.0.3` — JWT signing (legacy; Clerk JWT used for production)
-- **svix** `^1.94.0` — Clerk webhook verification
-- **Zod** `^4.4.3` — Schema validation
-
----
-
-## Observability
-
-- **Pino** `^10.3.1` + `pino-pretty` — Structured logging
-- **prom-client** `^15.1.3` — Prometheus metrics (gated behind `METRICS_TOKEN`)
-- **@sentry/node** `^10.53.1` — Error tracking (optional, env-gated)
-- Custom debug server on port 9222 (gated behind `DEBUG_TOKEN`)
-
----
-
-## Databases
-
-| Database | Purpose | Port |
-|----------|---------|------|
-| PostgreSQL 15 | Primary data (Docker) | 7777→5432 |
-| Redis 7 | BullMQ queues, rate limiting | 6379 |
-
----
-
-## AI / LLM
-
-- **openai** `^6.42.0` SDK — used for OpenAI and OpenRouter calls
-- **AiInteg/** directory — custom bridge/config/endpoints for multi-provider AI
-- `src/ai/orchestrator.ts` — Central AI dispatcher
-- Providers: OpenRouter, Groq, OpenAI (env-configurable per bot)
-
----
-
-## Testing
-
-- **Vitest** `^4.1.6` + `@vitest/coverage-v8`
-- **supertest** `^7.2.2` — HTTP integration tests
-- `src/__tests__/` — test directory with setup mocks
-
----
-
-## ⚠️ Frontend Bloat — Unused Packages
-
-The frontend `package.json` includes several packages that don't belong in a Vite/React SPA:
-
-| Package | Issue |
-|---------|-------|
-| `express-rate-limit ^8.5.2` | **Server-side only** — should not be in frontend deps |
-| `helmet ^8.2.0` | **Server-side only** — no-op in browser |
-| `pino ^10.3.1` / `pino-pretty` | Node-native logger — wrong for browser |
-| `rate-limit-redis ^5.0.0` | Requires Redis — meaningless in browser |
-| `next-themes ^0.4.6` | Next.js specific — project uses Vite, not Next |
-| `isomorphic-dompurify ^3.14.0` | Redundant with `dompurify` already installed |
-
-**Risk:** These increase bundle size and may cause build warnings/errors. The `rate-limit-redis` package in particular requires native Redis bindings that Vite will fail to bundle.
+## Dev Tooling
+- **Docker Compose**: postgres, redis, prometheus (9090), grafana (3001:3000), evolution-api (8081)
+- **Debug server**: port 9222, `DEBUG_TOKEN` required, NPM-style dashboard, SSE streaming
+- **Monitoring**: Prometheus + Grafana (crmv2-prometheus, crmv2-grafana containers)
