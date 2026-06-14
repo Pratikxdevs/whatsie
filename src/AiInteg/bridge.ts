@@ -16,6 +16,7 @@ import { generateAiResponse } from '../ai/orchestrator';
 import { runStructuralizer } from '../ai/structuralizer';
 import { ResponseRouter } from '../router/index';
 import { NormalizedMessage } from '../normalizer/types';
+import { addLog } from '../debug/server';
 
 export interface BridgeResult {
   success: boolean;
@@ -92,6 +93,16 @@ export async function processInboundMessage(
 
     log.info({ conversationId: conversation.id, leadId: lead.id }, 'Inbound message persisted');
 
+    // Log to AI pipeline stream
+    addLog('info', `[AI] Inbound message received — ${msg.platform} → conv:${conversation.id.slice(0, 8)} lead:${lead.id.slice(0, 8)}`, undefined, {
+      source: 'ai', category: 'ai',
+      tenantId: msg.tenantId,
+      platform: msg.platform,
+      conversationId: conversation.id,
+      leadId: lead.id,
+      msgPreview: messageText.slice(0, 100),
+    });
+
     // Emit real-time event
     try {
       const { io: socketIo } = await import('../index');
@@ -111,14 +122,39 @@ export async function processInboundMessage(
     // ── Step 4: Generate AI Response ─────────────────────────────────
     let aiResponse: string | null = null;
     try {
-      aiResponse = await generateAiResponse(
+      const aiStart = Date.now();
+      addLog('info', `[AI] Generating response for conv:${conversation.id.slice(0, 8)} — model pending`, undefined, {
+        source: 'ai', category: 'ai',
+        tenantId: msg.tenantId,
+        conversationId: conversation.id,
+        promptPreview: messageText.slice(0, 200),
+      });
+
+      const aiResult = await generateAiResponse(
         msg.tenantId,
         msg.userId,
         messageText,
       );
+      aiResponse = aiResult.response;
+      const aiLatency = Date.now() - aiStart;
+
       log.info({ responseLength: aiResponse?.length }, 'AI response generated');
+      addLog('info', `[AI] Response generated (${aiLatency}ms, ${aiResponse?.length || 0} chars) — conv:${conversation.id.slice(0, 8)}`, undefined, {
+        source: 'ai', category: 'ai',
+        tenantId: msg.tenantId,
+        conversationId: conversation.id,
+        latencyMs: aiLatency,
+        responseLength: aiResponse?.length,
+        responsePreview: aiResponse?.slice(0, 100),
+      });
     } catch (err: any) {
       log.error({ err: err.message }, 'AI response generation failed');
+      addLog('error', `[AI] Response generation FAILED — ${err.message?.slice(0, 150)}`, 'SYS_005', {
+        source: 'ai', category: 'ai',
+        tenantId: msg.tenantId,
+        conversationId: conversation.id,
+        error: err.message,
+      });
       aiResponse = "I'm having trouble processing your request. Please try again.";
     }
 
@@ -127,23 +163,49 @@ export async function processInboundMessage(
     if (aiResponse) {
       const tryDispatch = async () => ResponseRouter.dispatch(msg, conversation.id, aiResponse!);
       try {
+        addLog('info', `[AI] Dispatching response to ${msg.platform} — conv:${conversation.id.slice(0, 8)}`, undefined, {
+          source: 'ai', category: 'ai',
+          tenantId: msg.tenantId,
+          platform: msg.platform,
+          conversationId: conversation.id,
+        });
         const result = await tryDispatch();
         sentToPlatform = result.success;
         log.info({ messageId: result.messageId }, 'Response dispatched to platform');
+        addLog('info', `[AI] ✓ Dispatched to ${msg.platform} (msgId: ${result.messageId?.slice(0,12) || 'n/a'})`, undefined, {
+          source: 'ai', category: 'ai',
+          tenantId: msg.tenantId,
+          messageId: result.messageId,
+        });
       } catch (firstErr: any) {
         log.warn({ err: firstErr.message }, 'First dispatch attempt failed — retrying in 2s');
+        addLog('warn', `[AI] Dispatch attempt 1 failed — retrying... (${firstErr.message?.slice(0, 100)})`, 'WA_004', {
+          source: 'ai', category: 'ai',
+          tenantId: msg.tenantId,
+          conversationId: conversation.id,
+        });
         await new Promise(resolve => setTimeout(resolve, 2000));
         try {
           const result = await tryDispatch();
           sentToPlatform = result.success;
           log.info({ messageId: result.messageId }, 'Response dispatched to platform (retry)');
+          addLog('info', `[AI] ✓ Dispatched on retry to ${msg.platform}`, undefined, {
+            source: 'ai', category: 'ai',
+            tenantId: msg.tenantId,
+          });
         } catch (finalErr: any) {
           log.error({ err: finalErr.message }, 'Failed to dispatch response after retry');
+          addLog('error', `[AI] ✗ Dispatch permanently FAILED after retry — ${finalErr.message?.slice(0, 150)}`, 'WA_004', {
+            source: 'ai', category: 'ai',
+            tenantId: msg.tenantId,
+            conversationId: conversation.id,
+            error: finalErr.message,
+          });
           // Mark outbound message as failed in DB
           try {
             await prisma.message.updateMany({
               where: { conversationId: conversation.id, direction: 'out', content: aiResponse! },
-              data: { metadata: { platform: msg.platform, sendFailed: true } as any },
+              data: { metadata: { platform: msg.platform, sendFailed: true } as Record<string, unknown> },
             });
           } catch (_) {}
           // Notify dashboard via Socket.IO
@@ -210,7 +272,7 @@ export async function bridgeHealthCheck(): Promise<{
   try {
     const evoUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8081';
     const res = await fetch(`${evoUrl}/instance/fetchInstances`, {
-      headers: { apikey: process.env.EVOLUTION_API_KEY || '' },
+      headers: { apikey: process.env.EVOLUTION_API_KEY as string },
       signal: AbortSignal.timeout(5000),
     });
     components.evolutionApi = { status: res.ok ? 'ok' : 'error' };

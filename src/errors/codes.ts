@@ -140,3 +140,7 @@ export function createAppError(code: ErrorCode, detail?: string, meta?: Record<s
     timestamp: new Date().toISOString(),
   };
 }
+
+// Re-export recovery helpers for single-import convenience
+export { enrichError, getRecovery, ERROR_RECOVERY } from './recovery';
+export type { EnrichedError, RecoveryAction } from './recovery';

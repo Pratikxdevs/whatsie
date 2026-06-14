@@ -52,7 +52,7 @@ describe('Analytics API', () => {
       mockPrisma.$queryRaw.mockResolvedValueOnce([]);
 
       await request(app)
-        .get('/api/analytics/message-volume?days=7&platform=telegram')
+        .get('/api/analytics/message-volume?days=7&platform=whatsapp')
         .set('Authorization', `Bearer ${token}`);
 
       expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);

@@ -11,7 +11,7 @@ import requestId from './middleware/requestId';
 import { logger } from './config/logger';
 import { authRateLimiter, apiRateLimiter } from './middleware/rateLimit';
 import gatewayRouter from './routes/gateway';
-import authRouter from './api/auth';
+
 // whatsapp.routes.ts removed (C-003) — superseded by workspaces.ts + whatsapp-chat.ts
 import whatsappChatRouter from './routes/whatsapp-chat';
 import workspacesRouter from './routes/workspaces';
@@ -47,7 +47,7 @@ const requiredEnvs = [
   'DATABASE_URL', 'REDIS_URL', 'GATEWAY_SECURITY_TOKEN', 'JWT_SECRET',
   'EVOLUTION_API_SECRET', 'EVOLUTION_API_KEY', 'EVOLUTION_API_URL',
   'CLERK_SECRET_KEY', 'CLERK_PUBLISHABLE_KEY', 'OPENROUTER_API_KEY',
-  'API_KEY_PEPPER', // C-001: required to prevent known-pepper API key attacks
+  'API_KEY_PEPPER', 'DEBUG_TOKEN', // C-001: required to prevent known-pepper API key attacks
 ];
 const missingEnvs = requiredEnvs.filter(env => !process.env[env]);
 if (missingEnvs.length > 0) {
@@ -93,6 +93,9 @@ app.use(helmet({
   xFrameOptions: { action: 'deny' },
 }));
 app.use(requestId);
+// Clerk Webhook (unauthenticated — uses svix signature verification, must receive raw body)
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRouter);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(clerkMiddleware({
   secretKey: process.env.CLERK_SECRET_KEY,
@@ -213,6 +216,9 @@ io.on('connection', (socket) => {
   const tenantId = (socket as any).tenantId;
   const userId = (socket as any).userId;
   logger.info({ socketId: socket.id, tenantId, userId }, `Socket client connected`);
+  addLog('info', `[BACKEND] ↳ WebSocket connected — tenant:${tenantId?.slice(0,8)} user:${userId?.slice(0,8)} socket:${socket.id}`, undefined, {
+    source: 'backend', category: 'backend', event: 'ws_connect', socketId: socket.id, tenantId, userId,
+  });
 
   // Auto-join tenant room on connection
   socket.join(tenantId);
@@ -223,22 +229,29 @@ io.on('connection', (socket) => {
     if (requestedTenantId !== tenantId) {
       logger.warn({ socketId: socket.id, requested: requestedTenantId, actual: tenantId }, `Socket client rejected: tenant mismatch`);
       socket.emit('error', { message: 'Unauthorized: tenant mismatch' });
+      addLog('warn', `[BACKEND] ⚠ WebSocket tenant mismatch — rejected socket:${socket.id}`, 'AUTH_004', {
+        source: 'backend', category: 'backend', event: 'ws_tenant_mismatch', socketId: socket.id,
+      });
       return;
     }
     socket.join(tenantId);
     logger.info({ socketId: socket.id, tenantId }, `Socket client joined tenant workspace`);
+    addLog('info', `[BACKEND] WebSocket joined room tenant:${tenantId?.slice(0,8)}`, undefined, {
+      source: 'backend', category: 'backend', event: 'ws_join', socketId: socket.id, tenantId,
+    });
   });
 
   socket.on('disconnect', () => {
     logger.info({ socketId: socket.id }, `Socket client disconnected`);
+    addLog('info', `[BACKEND] ← WebSocket disconnected — socket:${socket.id}`, undefined, {
+      source: 'backend', category: 'backend', event: 'ws_disconnect', socketId: socket.id,
+    });
   });
 });
 
-// Clerk Webhook (unauthenticated — uses svix signature verification)
-app.use('/api/webhooks', webhookRouter);
 
-// Main Auth Interface
-app.use('/api/auth', authRateLimiter, authRouter);
+
+
 
 // AI Provider listing (no auth needed — public info)
 app.get('/api/providers', async (_req, res) => {
@@ -377,6 +390,15 @@ server.listen(PORT, () => {
 
   // Start debug server on port 9222
   startDebugServer();
+
+  // Log startup to ring buffer
+  addLog('info', `[BACKEND] ✔ Server started on port ${actualPort}`, undefined, {
+    source: 'backend', category: 'backend', event: 'server_start', port: actualPort,
+    nodeEnv: process.env.NODE_ENV || 'development',
+  });
+
+  // Start Docker log stream
+  startDockerLogStream();
 
   // Startup sync — reconcile bot statuses with platform APIs
   (async () => {

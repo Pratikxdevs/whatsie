@@ -68,9 +68,9 @@ export async function processInboundMessageDbUpdates(normalized: NormalizedMessa
   // 4. Extract media URL and location coords from first attachment for frontend access
   const firstAttachment = message.attachments?.[0];
   const mediaUrl = firstAttachment?.url || undefined;
-  const fileName = (firstAttachment as any)?.fileName || undefined;
-  const latitude = (firstAttachment as any)?.latitude ?? undefined;
-  const longitude = (firstAttachment as any)?.longitude ?? undefined;
+  const fileName = (firstAttachment as Record<string, any>)?.fileName || undefined;
+  const latitude = (firstAttachment as Record<string, any>)?.latitude ?? undefined;
+  const longitude = (firstAttachment as Record<string, any>)?.longitude ?? undefined;
 
   // 5. Persist inbound Message
   const newMessage = await prisma.message.create({
@@ -106,7 +106,7 @@ export async function logEvent(
   try {
     // prisma.event requires `npx prisma generate` after schema changes.
     // This guard prevents crashing the pipeline if the client is stale.
-    const p = prisma as any;
+    const p = prisma as unknown as Record<string, any>;
     if (typeof p.event?.create === 'function') {
       return await p.event.create({
         data: { tenantId, type, payload: { leadId, ...payload } },

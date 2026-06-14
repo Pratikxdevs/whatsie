@@ -109,3 +109,6 @@ whatsie/
 
 # Large reference docs committed by mistake
 ARCHITECTURE.txt
+*.postman_collection.json
+docker-compose.override.yml
+*.postman_environment.json

@@ -6,7 +6,9 @@
  */
 import axios from 'axios';
 import { errorLog } from './errorLog';
+import { errorRecovery } from './errorRecovery';
 import { clerkBridge } from '../lib/clerk-bridge';
+import { toast } from 'sonner';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -24,36 +26,69 @@ const authInterceptor = async (config: any) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Log every request start to [FRONTEND] stream
+  const method = config.method?.toUpperCase() || 'GET';
+  const url = config.url || '';
+  errorLog.activityLog(`→ ${method} ${url}`, { method, url, category: 'frontend' });
+  config.metadata = { startTime: Date.now() };
   return config;
 };
 api.interceptors.request.use(authInterceptor);
 
-// Log all API errors automatically
+// Log all API activity and dispatch recovery actions on errors
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses as [FRONTEND] activity
+    const method = response.config.method?.toUpperCase() || 'GET';
+    const url = response.config.url || '';
+    const status = response.status;
+    const duration = response.config.metadata
+      ? Date.now() - response.config.metadata.startTime
+      : 0;
+    errorLog.activityLog(`← ${method} ${url} → ${status}${duration > 0 ? ` (${duration}ms)` : ''}`, {
+      method, url, status, duration, category: 'frontend',
+    });
+    return response;
+  },
   async (error) => {
     const status = error?.response?.status;
     const endpoint = error?.config?.url || '';
+    const method = error?.config?.method?.toUpperCase() || '';
+    const duration = error?.config?.metadata
+      ? Date.now() - error.config.metadata.startTime
+      : 0;
+
+    // Log the failed call
+    errorLog.activityLog(`← ${method} ${endpoint} → ${status || 'ERR'}${duration > 0 ? ` (${duration}ms)` : ''} ✗`, {
+      method, endpoint, status, duration, category: 'frontend',
+    });
+
+    // Check if backend sent enriched error with recovery metadata
+    const responseData = error?.response?.data;
+    const hasRecovery = responseData?.recovery && responseData?.code;
 
     if (!error.response) {
       // Network error — backend unreachable
-      import('sonner').then(({ toast }) => {
-        toast.error('Cannot reach the server. Check your connection.');
-      });
+      toast.error('Cannot reach the server. Check your connection.');
+      errorLog.activityLog('[FRONTEND] Network error — server unreachable', { category: 'frontend' });
     } else if ((status === 401 || status === 403) && !endpoint.includes('/ai/verify')) {
-      // Session expired or permission denied — sign out via bridge and redirect
-      await clerkBridge.signOut();
-      import('sonner').then(({ toast }) => {
+      if (hasRecovery) {
+        // Use typed recovery action
+        errorRecovery.handleEnrichedError(responseData);
+      } else {
+        // Fallback generic redirect
+        await clerkBridge.signOut();
         toast.info('Session expired or invalid — please sign in again');
-      });
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
+    } else if (hasRecovery) {
+      // Backend provided a recovery action — use it
+      errorRecovery.handleEnrichedError(responseData);
     } else if (status && status >= 500) {
-      // Server error — inform, don't redirect
-      import('sonner').then(({ toast }) => {
-        toast.error('Server error — please try again in a moment.');
-      });
+      // Generic server error
+      toast.error('Server error — please try again in a moment.');
     }
 
     errorLog.logApiError(error, endpoint);

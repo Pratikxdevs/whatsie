@@ -74,7 +74,8 @@ export async function resolveAiConfig(tenantId: string, userId?: string): Promis
     } catch (err: any) {}
   }
 
-  const apiKey = botConfig.api_key || userApiKey || process.env.OPENROUTER_API_KEY || '';
+  const apiKey = botConfig.api_key || userApiKey || process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured');
   const model = botConfig.model || process.env.DEFAULT_MODEL || 'meta-llama/llama-3-8b-instruct';
 
   return {

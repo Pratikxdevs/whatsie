@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { prisma, prismaUnfiltered } from '../db/prisma';
 import { tenantContext } from './tenant';
 import { logger } from '../config/logger';
+import { enrichError } from '../errors/recovery';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -48,7 +49,7 @@ export const authenticateToken = async (req: AuthenticatedRequest, res: Response
       };
       return next();
     }
-    return res.status(401).json({ error: 'Invalid API Key' });
+    return res.status(401).json(enrichError('AUTH_005', 'API key is invalid or revoked'));
   }
 
   // Strategy 2: Clerk JWT
@@ -83,7 +84,7 @@ export const authenticateToken = async (req: AuthenticatedRequest, res: Response
           logger.info({ clerkId: authState.userId, tenantId: user.tenantId }, 'JIT sync successful');
         } catch (syncErr: any) {
           logger.error({ err: syncErr.message }, 'JIT sync failed');
-          return res.status(403).json({ error: 'User not synced and auto-sync failed' });
+          return res.status(403).json(enrichError('AUTH_006', 'User account not synced — try signing out and back in'));
         }
       }
 
@@ -91,10 +92,10 @@ export const authenticateToken = async (req: AuthenticatedRequest, res: Response
       return tenantContext.run({ tenantId: user.tenantId }, () => next());
     } catch (error) {
       logger.error({ error }, 'Clerk auth lookup failed');
-      return res.status(500).json({ error: 'Internal Server Error' });
+      return res.status(500).json(enrichError('AUTH_003', 'Authentication lookup failed — try signing in again'));
     }
   }
 
   // Default Fail-Closed
-  return res.status(401).json({ error: 'Authentication required — provide a valid Clerk token or X-API-KEY header' });
+  return res.status(401).json(enrichError('AUTH_001', 'Authentication required — provide a valid Clerk token or X-API-KEY header'));
 };

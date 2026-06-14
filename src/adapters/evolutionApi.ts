@@ -14,7 +14,7 @@ import { createProxiedClient } from '../middleware/httpProxy';
 // Shared HTTP client
 // ---------------------------------------------------------------------------
 const EVO_URL  = process.env.EVOLUTION_API_URL || 'http://localhost:8081';
-const EVO_KEY  = process.env.EVOLUTION_API_KEY || '';
+const EVO_KEY  = process.env.EVOLUTION_API_KEY as string;
 
 const evo: AxiosInstance = createProxiedClient({
   baseURL: EVO_URL,
@@ -233,28 +233,43 @@ export async function setPresence(instanceName: string, presence: 'available' | 
 
 /** Get connection state */
 export async function getConnectionState(instanceName: string) {
-  const { data } = await evo.get(`/instance/connectionState/${instanceName}`);
+  try {
+    const { data } = await evo.get(`/instance/connectionState/${instanceName}`);
 
-  // Evolution API returns state at data.instance.state
-  const state = data?.instance?.state;
-  const newStatus = 
-    state === 'open' ? 'connected' : 
-    state === 'close' ? 'disconnected' : 
-    state === 'connecting' ? 'starting' : 
-    undefined;
+    // Evolution API returns state at data.instance.state
+    const state = data?.instance?.state;
+    const newStatus = 
+      state === 'open' ? 'connected' : 
+      state === 'close' ? 'disconnected' : 
+      state === 'connecting' ? 'starting' : 
+      undefined;
 
-  // DB sync — only write if we got a definitive state and it changed
-  if (newStatus) {
-    const bot = await prisma.bot.findFirst({ where: { sessionName: instanceName }, select: { status: true } });
-    if (bot && bot.status !== newStatus) {
-      await prisma.bot.updateMany({
-        where: { sessionName: instanceName },
-        data: { status: newStatus },
-      });
+    // DB sync — only write if we got a definitive state and it changed
+    if (newStatus) {
+      const bot = await prisma.bot.findFirst({ where: { sessionName: instanceName }, select: { status: true } });
+      if (bot && bot.status !== newStatus) {
+        await prisma.bot.updateMany({
+          where: { sessionName: instanceName },
+          data: { status: newStatus }
+        });
+      }
     }
-  }
 
-  return data;
+    return data;
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      // Instance does not exist in Evolution API — mark as disconnected locally
+      const bot = await prisma.bot.findFirst({ where: { sessionName: instanceName }, select: { status: true } });
+      if (bot && bot.status !== 'disconnected') {
+        await prisma.bot.updateMany({
+          where: { sessionName: instanceName },
+          data: { status: 'disconnected' }
+        });
+      }
+      return { instance: { state: 'close' } };
+    }
+    throw error;
+  }
 }
 
 /** Logout (disconnect) instance — does NOT delete it from Evolution */

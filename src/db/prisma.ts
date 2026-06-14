@@ -14,6 +14,11 @@ declare global {
 
 import { logger } from '../config/logger';
 
+// addLog is imported lazily to avoid circular dep (db/prisma → debug/server → queue/setup → db/prisma)
+function getAddLog() {
+  try { return require('../debug/server').addLog; } catch { return null; }
+}
+
 const basePrisma: any =
   globalThis.__prisma ??
   new PrismaClient({
@@ -25,10 +30,35 @@ const basePrisma: any =
     ],
   });
 
-basePrisma.$on('query', (e: any) => logger.debug({ query: e.query, params: e.params, duration: e.duration }, 'Prisma Query'));
-basePrisma.$on('info', (e: any) => logger.info({ msg: e.message }, 'Prisma Info'));
-basePrisma.$on('warn', (e: any) => logger.warn({ msg: e.message }, 'Prisma Warn'));
-basePrisma.$on('error', (e: any) => logger.error({ msg: e.message }, 'Prisma Error'));
+basePrisma.$on('query', (e: any) => {
+  logger.debug({ query: e.query, params: e.params, duration: e.duration }, 'Prisma Query');
+  const addLog = getAddLog();
+  const durationMs = parseInt(e.duration, 10);
+  const isSlow = durationMs >= 200;
+  if (addLog && (!process.env.NODE_ENV || process.env.NODE_ENV !== 'production' || isSlow)) {
+    addLog(
+      isSlow ? 'warn' : 'info',
+      `[DATABASE] ${e.query?.split(' ')[0] || 'QUERY'} — ${durationMs}ms${isSlow ? ' ⚠ SLOW' : ''}`,
+      undefined,
+      { source: 'database', category: 'db', duration: durationMs, slow: isSlow, params: String(e.params).slice(0, 100) }
+    );
+  }
+});
+basePrisma.$on('info', (e: any) => {
+  logger.info({ msg: e.message }, 'Prisma Info');
+  const addLog = getAddLog();
+  if (addLog) addLog('info', `[DATABASE] ${e.message}`, undefined, { source: 'database', category: 'db' });
+});
+basePrisma.$on('warn', (e: any) => {
+  logger.warn({ msg: e.message }, 'Prisma Warn');
+  const addLog = getAddLog();
+  if (addLog) addLog('warn', `[DATABASE] ${e.message}`, undefined, { source: 'database', category: 'db' });
+});
+basePrisma.$on('error', (e: any) => {
+  logger.error({ msg: e.message }, 'Prisma Error');
+  const addLog = getAddLog();
+  if (addLog) addLog('error', `[DATABASE] ERROR: ${e.message}`, 'DB_001', { source: 'database', category: 'db' });
+});
 
 if (process.env.NODE_ENV !== 'production') {
   globalThis.__prisma = basePrisma;
@@ -50,7 +80,7 @@ export const prismaUnfiltered = basePrisma;
 export const prisma = basePrisma.$extends({
   query: {
     $allModels: {
-      async $allOperations({ model, operation, args, query }) {
+      async $allOperations({ model, operation, args, query }: { model: string; operation: string; args: any; query: (args: any) => Promise<any> }) {
         const store = tenantContext.getStore();
         
         // If the model belongs to a tenant but no tenant context exists, FAIL CLOSED.

@@ -20,6 +20,7 @@ import { resolveAiConfig, validateAiConfig } from './config';
 import { bridgeHealthCheck } from './bridge';
 import { AuthenticatedRequest, authenticateToken } from '../middleware/auth';
 import { logger } from '../config/logger';
+import { addLog } from '../debug/server';
 
 const router = Router();
 
@@ -73,6 +74,7 @@ router.post('/verify', async (req: Request, res: Response) => {
     if (keyRes.status === 'rejected') {
       const errorReason = keyRes.reason;
       logger.warn({ error: errorReason?.message }, 'OpenRouter key validation failed');
+      addLog('warn', `[API] OpenRouter key validation FAILED — ${errorReason?.message?.slice(0, 100)}`, 'AUTH_005', { source: 'api', category: 'api' });
       if (errorReason?.response?.status === 401 || errorReason?.response?.status === 403) {
         return res.status(200).json({ status: 'invalid', credits: 0, availableModels: [] });
       }
@@ -113,6 +115,7 @@ router.post('/verify', async (req: Request, res: Response) => {
     });
 
     res.json({ status: 'valid', credits, availableModels });
+    addLog('info', `[API] OpenRouter key verified — credits: ${credits}, models: ${availableModels.length}`, undefined, { source: 'api', category: 'api', credits, modelCount: availableModels.length });
   } catch (err: any) {
     logger.error({ err: err.message }, 'Failed to run AI verify endpoint');
     res.status(500).json({ error: err.message });
@@ -170,6 +173,8 @@ router.post('/test', async (req: Request, res: Response) => {
     const start = Date.now();
     const response = await generateAiResponse(tenantId, 'test-user', message);
     const duration = Date.now() - start;
+
+    addLog('info', `[AI] Test message sent by tenant:${tenantId.slice(0,8)} (${duration}ms)`, undefined, { source: 'ai', category: 'ai', tenantId, duration, msgPreview: message.slice(0, 100) });
 
     res.json({
       input: message,

@@ -1,3 +1,4 @@
+// Outbound Platform Rate Limiter - Distinguishes from express-rate-limit in middleware/rateLimit.ts
 import { redisConnection } from '../queue/setup';
 
 class RedisRateLimiter {

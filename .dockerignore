@@ -1,0 +1,47 @@
+# Node
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+
+# Build output
+dist/
+frontend/dist/
+build/
+
+# Environment & secrets
+.env
+.env.*
+apikeys.txt
+bypassall.txt
+*.pem
+*.key
+
+# Git & CI
+.git/
+.gitignore
+.github/
+
+# Planning & documentation
+.planning/
+.agent/
+*.md
+ARCHITECTURE.txt
+
+# Test artifacts
+coverage/
+.nyc_output/
+test-results/
+src/__tests__/
+
+# Dev tooling
+*.postman_collection.json
+Dockerfile.dev
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript source
+# *.ts
+# !src/**/*.d.ts

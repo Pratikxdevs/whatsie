@@ -6,6 +6,7 @@ import { logger } from '../config/logger';
 import { io } from '../index';
 import { validateBody } from '../middleware/validate';
 import { createBotSchema } from '../schemas/bots';
+import { enrichError } from '../errors/recovery';
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.get('/', async (req, res) => {
     return res.json({ workspaces: bots.map(mapBotToWorkspace) });
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error fetching workspaces');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('DB_002', err.message));
   }
 });
 
@@ -111,10 +112,7 @@ router.post('/', validateBody(createBotSchema), async (req, res) => {
       logger.info({ sessionName: tempSessionName }, 'Evolution API instance created successfully');
     } catch (evoErr: any) {
       logger.error({ err: evoErr.response?.data || evoErr.message }, 'Evolution API instance creation failed — bot NOT created');
-      return res.status(502).json({
-        error: 'Failed to connect to messaging platform',
-        details: evoErr.response?.data?.message || evoErr.message || 'Evolution API unreachable'
-      });
+      return res.status(502).json(enrichError('WA_006', evoErr.response?.data?.message || evoErr.message || 'Evolution API unreachable'));
     }
 
     // 2. Evolution API confirmed — now create the DB record
@@ -141,7 +139,8 @@ router.post('/', validateBody(createBotSchema), async (req, res) => {
     return res.status(201).json({ workspace: mapBotToWorkspace(bot) });
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error creating workspace');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    if (err.code === 'P2002') return res.status(409).json(enrichError('DB_003', err.message));
+    return res.status(500).json(enrichError('SYS_005', err.message));
   }
 });
 
@@ -179,7 +178,7 @@ router.put('/:id', async (req, res) => {
     return res.json({ workspace: mapBotToWorkspace(updatedBot) });
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error updating workspace');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('DB_006', err.message));
   }
 });
 
@@ -223,7 +222,7 @@ router.delete('/:id', async (req, res) => {
     return res.status(200).json({ success: true });
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error deleting workspace');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('DB_006', err.message));
   }
 });
 
@@ -269,7 +268,7 @@ router.post('/:id/start', async (req, res) => {
       }
       logger.error({ sessionName, err: err.message }, 'Start bot failed');
       await prisma.bot.updateMany({ where: { id }, data: { status: 'error' } }).catch(() => {});
-      return res.status(502).json({ error: 'Failed to connect to messaging platform', details: err.message });
+      return res.status(502).json(enrichError('WA_003', err.message));
     }
 
     // No QR returned — check connection state directly, or re-trigger QR
@@ -288,7 +287,7 @@ router.post('/:id/start', async (req, res) => {
     }
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error starting workspace');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('WA_003', err.message));
   }
 });
 
@@ -320,7 +319,7 @@ router.post('/:id/stop', async (req, res) => {
         logger.info({ sessionName }, 'Instance already disconnected or missing in Evolution API, proceeding with local disconnect');
       } else {
         await prisma.bot.updateMany({ where: { id }, data: { status: 'error' } }).catch(() => {});
-        return res.status(500).json({ error: 'Failed to disconnect from messaging platform', details: err.message });
+        return res.status(500).json(enrichError('WA_002', err.message));
       }
     }
 
@@ -329,7 +328,7 @@ router.post('/:id/stop', async (req, res) => {
     return res.json({ status: 'disconnected' });
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error stopping workspace');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('WA_002', err.message));
   }
 });
 
@@ -398,7 +397,7 @@ router.get('/:id/connection-status', async (req, res) => {
     return res.json({ sessionInfo: { status: bot.status || 'starting' }, screenshotUrl: null });
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error checking status');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('WA_001', err.message));
   }
 });
 
@@ -437,7 +436,7 @@ router.post('/:id/validate-key', async (req, res) => {
     return res.json({ valid: true, provider, model: config.model || null });
   } catch (err: any) {
     logger.error({ err }, 'Workspaces route error validating key');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('AUTH_005', err.message));
   }
 });
 

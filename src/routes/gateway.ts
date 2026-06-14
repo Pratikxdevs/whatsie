@@ -89,6 +89,7 @@ router.post(
   '/whatsapp/:tenantId',
   rateLimitMiddleware,
   verifyWhatsAppSignature,
+  authenticateTenant,
   async (req: Request, res: Response) => {
     // Return 200 OK immediately as per Layer 2 rule: "Return 200 OK within 3 seconds (queue async processing)"
     res.status(200).send('OK');

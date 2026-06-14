@@ -39,8 +39,10 @@ router.post('/clerk', async (req: Request, res: Response) => {
   const wh = new Webhook(WEBHOOK_SECRET);
   let evt: ClerkWebhookEvent;
 
+  const payload = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);
+
   try {
-    evt = wh.verify(JSON.stringify(req.body), {
+    evt = wh.verify(payload, {
       'svix-id': svixId,
       'svix-timestamp': svixTimestamp,
       'svix-signature': svixSignature,
@@ -72,7 +74,7 @@ router.post('/clerk', async (req: Request, res: Response) => {
         }
 
         // Create tenant + user in a transaction
-        const result = await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx: any) => {
           const tenantName = email.split('@')[0] || 'My Workspace';
           const tenant = await tx.tenant.create({
             data: {

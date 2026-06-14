@@ -12,6 +12,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { getSocketUrl, getSocketAuthToken } from './api';
+import { errorLog } from './errorLog';
 
 type Listener = (...args: any[]) => void;
 
@@ -45,20 +46,27 @@ class SocketManager {
       this.resolveConnect = resolve;
     });
 
-    const token = await getSocketAuthToken();
     this.socket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
-      auth: { token },
+      auth: (cb) => {
+        getSocketAuthToken().then(token => {
+          cb({ token });
+        }).catch(() => {
+          cb({ token: null });
+        });
+      },
     });
 
     this.socket.on('connect', () => {
       // Server auto-joins the tenant room on connect (index.ts socket.join(tenantId))
       // No manual join_tenant needed — avoids tenant-id mismatch warnings
+      errorLog.activityLog(`[FRONTEND] ↳ WebSocket connected — tenant:${tenantId?.slice(0, 8)}`, { category: 'frontend', event: 'ws_connect', tenantId });
       this.resolveConnect?.();
     });
 
     this.socket.on('disconnect', () => {
       // Reset connect promise on disconnect so future emits wait for reconnect
+      errorLog.activityLog('[FRONTEND] ← WebSocket disconnected', { category: 'frontend', event: 'ws_disconnect' });
       this.connectPromise = new Promise((resolve) => {
         this.resolveConnect = resolve;
       });
@@ -66,7 +74,12 @@ class SocketManager {
 
     this.socket.on('reconnect', () => {
       // Server re-joins tenant room on reconnect automatically
+      errorLog.activityLog('[FRONTEND] ↻ WebSocket reconnected', { category: 'frontend', event: 'ws_reconnect' });
       this.resolveConnect?.();
+    });
+
+    this.socket.on('connect_error', (err: Error) => {
+      errorLog.activityLog(`[FRONTEND] ✗ WebSocket connection error — ${err.message}`, { category: 'frontend', event: 'ws_error', error: err.message });
     });
 
     // Replay any cached listeners onto the new socket
@@ -106,6 +119,7 @@ class SocketManager {
    */
   async emit(event: string, ...args: any[]): Promise<void> {
     if (this.connectPromise) await this.connectPromise;
+    errorLog.activityLog(`[FRONTEND] ⇧ Socket emit: ${event}`, { category: 'frontend', event: 'ws_emit', socketEvent: event });
     this.socket?.emit(event, ...args);
   }
 

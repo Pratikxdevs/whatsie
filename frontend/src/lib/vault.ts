@@ -1,69 +1,66 @@
-const VAULT_SALT = "whatsie_secure_salt_2026";
+/**
+ * Local storage key vault for API keys.
+ * Obfuscates keys so they aren't stored in plain text.
+ */
 
 export interface VaultEntry {
-  keyHash: string;      // Masked / truncated display key (e.g. sk-or-...4a9f)
-  obfuscatedKey: string; // Base64 + Dynamic salt-shuffled representation of the key
-  provider: string;      // e.g. "openrouter"
-  lastVerified: string;  // ISO timestamp
+  keyHash: string;
+  obfuscatedKey: string;
   balance: number;
 }
 
-export function obfuscateKey(rawKey: string): string {
-  const combined = `${VAULT_SALT}:${rawKey}`;
-  const reversed = combined.split("").reverse().join("");
-  return btoa(reversed);
+const VAULT_KEY = 'ai_key_vault';
+
+// Simple base64 encoding to obfuscate (not true encryption, just avoids plain-text scraping)
+function obfuscate(key: string): string {
+  if (!key) return '';
+  return btoa(key);
 }
 
-export function deobfuscateKey(obfuscatedKey: string): string {
+export function deobfuscateKey(obfuscatedKey: string): string | null {
+  if (!obfuscatedKey) return null;
   try {
-    const reversed = atob(obfuscatedKey);
-    const combined = reversed.split("").reverse().join("");
-    const parts = combined.split(":");
-    if (parts[0] !== VAULT_SALT) throw new Error("Salt mismatch");
-    return parts.slice(1).join(":");
-  } catch (e) {
-    console.error("Failed to decrypt vault key", e);
-    return "";
+    return atob(obfuscatedKey);
+  } catch {
+    return null;
   }
 }
 
-const VAULT_STORAGE_KEY = "whatsie_vault";
+function generateHash(key: string): string {
+  if (!key) return 'unknown';
+  if (key.length <= 12) return key;
+  return key.substring(0, 8) + '...' + key.substring(key.length - 4);
+}
 
 export function getVaultEntries(): VaultEntry[] {
   try {
-    const data = localStorage.getItem(VAULT_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch (e) {
-    console.error("Failed to load key vault from localStorage", e);
+    const data = localStorage.getItem(VAULT_KEY);
+    if (!data) return [];
+    return JSON.parse(data) as VaultEntry[];
+  } catch {
     return [];
   }
 }
 
-export function saveVaultEntry(rawKey: string, balance: number): VaultEntry {
+export function saveVaultEntry(key: string, balance: number): void {
+  if (!key) return;
   const entries = getVaultEntries();
-  const obfuscated = obfuscateKey(rawKey);
+  const obfuscatedKey = obfuscate(key);
+  const keyHash = generateHash(key);
   
-  const keyHash = rawKey.length > 12 
-    ? `${rawKey.slice(0, 8)}...${rawKey.slice(-4)}`
-    : `sk-or-...${rawKey.slice(-4)}`;
-
-  const newEntry: VaultEntry = {
-    keyHash,
-    obfuscatedKey: obfuscated,
-    provider: "openrouter",
-    lastVerified: new Date().toISOString(),
-    balance
-  };
-
-  const filtered = entries.filter(e => deobfuscateKey(e.obfuscatedKey) !== rawKey);
-  filtered.unshift(newEntry);
+  const existingIndex = entries.findIndex(e => e.keyHash === keyHash);
+  if (existingIndex >= 0) {
+    entries[existingIndex].balance = balance;
+    entries[existingIndex].obfuscatedKey = obfuscatedKey;
+  } else {
+    entries.push({ keyHash, obfuscatedKey, balance });
+  }
   
-  localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(filtered));
-  return newEntry;
+  localStorage.setItem(VAULT_KEY, JSON.stringify(entries));
 }
 
 export function deleteVaultEntry(keyHash: string): void {
   const entries = getVaultEntries();
   const filtered = entries.filter(e => e.keyHash !== keyHash);
-  localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(filtered));
+  localStorage.setItem(VAULT_KEY, JSON.stringify(filtered));
 }

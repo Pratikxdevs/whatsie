@@ -14,6 +14,10 @@ vi.mock('../queue/setup', () => ({
   },
 }));
 
+vi.mock('../index', () => ({
+  io: { to: vi.fn().mockReturnThis(), emit: vi.fn() },
+}));
+
 vi.mock('../config/logger', () => ({
   logger: {
     info: vi.fn(),

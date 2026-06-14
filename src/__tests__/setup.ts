@@ -8,9 +8,12 @@ process.env.EVOLUTION_API_URL = 'http://localhost:8080';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
 process.env.REDIS_URL = 'redis://localhost:6379';
 process.env.NODE_ENV = 'test';
-process.env.TELEGRAM_BOT_TOKEN = 'test-telegram-token';
-process.env.TELEGRAM_WEBHOOK_SECRET = 'test-telegram-secret';
 process.env.PUBLIC_URL = 'https://test.example.com';
+process.env.CLERK_SECRET_KEY = 'test-clerk-secret';
+process.env.CLERK_PUBLISHABLE_KEY = 'test-clerk-publishable';
+process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+process.env.API_KEY_PEPPER = 'test-pepper';
+process.env.DEBUG_TOKEN = 'test-debug-token';
 
 // Prisma mock
 const createMockModel = () => ({

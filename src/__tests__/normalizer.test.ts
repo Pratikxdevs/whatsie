@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeWhatsAppWebhook, renderOutboundWhatsApp } from './whatsapp';
+import { normalizeWhatsAppWebhook, renderOutboundWhatsApp } from '../normalizer/whatsapp';
 
 describe('normalizeWhatsAppWebhook', () => {
   const tenantId = 'tenant-1';

@@ -5,9 +5,9 @@ services:
     image: postgres:15-alpine
     container_name: crmv2-postgres
     environment:
-      POSTGRES_USER: Crmv2-pgadmin
-      POSTGRES_PASSWORD: "CrmV2@2026"
-      POSTGRES_DB: crmv2
+      POSTGRES_USER: ${POSTGRES_USER:-Crmv2-pgadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-crmv2}
     ports:
       - "7777:5432"
     volumes:
@@ -42,7 +42,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
     restart: unless-stopped
 
   evolution-api:
@@ -70,10 +70,10 @@ services:
       - DATABASE_SAVE_IS_ON_WHATSAPP=false
       - DATABASE_SAVE_IS_ON_WHATSAPP_DAYS=7
       - DATABASE_DELETE_MESSAGE=true
-      - POSTGRES_USERNAME=Crmv2-pgadmin
-      - POSTGRES_PASSWORD=CrmV2@2026
-      - POSTGRES_DATABASE=evolution_db
-      - AUTHENTICATION_API_KEY=429683C4C977415CAAFCCE10F7D57E11
+      - POSTGRES_USERNAME=${POSTGRES_USER:-Crmv2-pgadmin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DATABASE=${POSTGRES_DB:-evolution_db}
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
       - CORS_ORIGIN=*
       - CORS_METHODS=GET,POST,PUT,DELETE

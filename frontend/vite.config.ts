@@ -14,6 +14,24 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    build: {
+      sourcemap: false,
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('@clerk')) {
+                return 'vendor';
+              }
+              if (id.includes('@radix-ui') || id.includes('lucide-react') || id.includes('recharts') || id.includes('sonner')) {
+                return 'ui';
+              }
+            }
+          }
+        }
+      }
+    },
     server: {
       port: 5173,
       host: true,

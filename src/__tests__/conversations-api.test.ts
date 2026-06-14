@@ -34,7 +34,7 @@ describe('Conversations API', () => {
     it('returns conversations with pagination', async () => {
       const mockConversations = [
         { id: 'conv-1', platform: 'whatsapp', status: 'open', leadId: 'lead-1' },
-        { id: 'conv-2', platform: 'telegram', status: 'closed', leadId: 'lead-2' },
+        { id: 'conv-2', platform: 'whatsapp', status: 'closed', leadId: 'lead-2' },
       ];
       mockPrisma.conversation.findMany.mockResolvedValueOnce(mockConversations);
       mockPrisma.conversation.count.mockResolvedValueOnce(2);
