@@ -6,6 +6,14 @@ import * as EvoApi from '../adapters/evolutionApi';
 
 const router = Router();
 
+router.post('/test-send', async (req: Request, res: Response) => {
+  try {
+    throw new Error('Test error');
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to send message', details: "[object Object]" });
+  }
+});
+
 router.use(authenticateToken);
 
 router.get('/chats', async (req: Request, res: Response) => {
@@ -111,24 +119,34 @@ router.get('/messages/:jid', async (req: Request, res: Response) => {
 
 router.post('/send', async (req: Request, res: Response) => {
   try {
-    const { sessionName, number, text } = req.body;
-    if (!sessionName || !number || !text) {
+    const { sessionName, number: rawNumber, text } = req.body;
+    if (!sessionName || !rawNumber || !text) {
       return res.status(400).json({ error: 'sessionName, number, and text are required' });
     }
+    // Strip JID suffix — Evolution API expects plain phone number digits only
+    const number = typeof rawNumber === 'string' ? rawNumber.replace(/@.*$/, '') : rawNumber;
     const data = await EvoApi.sendText(sessionName, { number, text });
     return res.status(200).json(data);
   } catch (error: any) {
-    logger.error({ err: error?.response?.data || error.message }, 'Failed to send message');
-    return res.status(500).json({ error: 'Failed to send message', details: error?.response?.data || error.message });
+    const upstreamStatus = error?.response?.status;
+    const errorDetails = error?.response?.data ? error.response.data : error.message;
+    logger.error({ err: errorDetails, upstreamStatus }, 'Failed to send message');
+    // Pass through 4xx from upstream (e.g. number not on WhatsApp) — don't mask as 500
+    if (upstreamStatus && upstreamStatus >= 400 && upstreamStatus < 500) {
+      return res.status(upstreamStatus).json({ error: 'Failed to send message', details: errorDetails });
+    }
+    return res.status(500).json({ error: 'Failed to send message', details: typeof errorDetails === 'string' ? errorDetails : JSON.stringify(errorDetails) });
   }
 });
 
 router.post('/media', async (req: Request, res: Response) => {
   try {
-    const { sessionName, number, base64, mediatype, mimetype, fileName, caption } = req.body;
-    if (!sessionName || !number || !base64 || !mediatype || !mimetype) {
+    const { sessionName, number: rawNumber, base64, mediatype, mimetype, fileName, caption } = req.body;
+    if (!sessionName || !rawNumber || !base64 || !mediatype || !mimetype) {
       return res.status(400).json({ error: 'sessionName, number, base64, mediatype, and mimetype are required' });
     }
+    // Strip JID suffix — Evolution API expects plain phone number digits only
+    const number = typeof rawNumber === 'string' ? rawNumber.replace(/@.*$/, '') : rawNumber;
     const data = await EvoApi.sendMedia(sessionName, {
       number,
       media: base64,
@@ -140,8 +158,13 @@ router.post('/media', async (req: Request, res: Response) => {
     });
     return res.status(200).json(data);
   } catch (error: any) {
-    logger.error({ err: error?.response?.data || error.message }, 'Failed to send media');
-    return res.status(500).json({ error: 'Failed to send media', details: error?.response?.data || error.message });
+    const upstreamStatus = error?.response?.status;
+    const errorDetails = error?.response?.data || error.message;
+    logger.error({ err: errorDetails, upstreamStatus }, 'Failed to send media');
+    if (upstreamStatus && upstreamStatus >= 400 && upstreamStatus < 500) {
+      return res.status(upstreamStatus).json({ error: 'Failed to send media', details: errorDetails });
+    }
+    return res.status(500).json({ error: 'Failed to send media', details: String(errorDetails) });
   }
 });
 

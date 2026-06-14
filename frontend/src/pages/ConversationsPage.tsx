@@ -165,7 +165,9 @@ function ChatListItem({
           </div>
           <div className="flex items-center justify-between mt-0.5">
             <span className="text-xs text-zinc-500 truncate max-w-[200px]">
-              {chat.lastMessage || "No messages yet"}
+              {typeof chat.lastMessage === 'object' 
+                ? extractTextFromMessage(chat.lastMessage as any) || "No messages yet"
+                : (chat.lastMessage || "No messages yet")}
             </span>
             {(chat.unreadCount ?? 0) > 0 && (
               <span className="ml-2 shrink-0 min-w-[18px] h-[18px] rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white px-1">
@@ -298,7 +300,13 @@ export function ConversationsPage() {
         setChatsLoading(true);
         setChatsError(null);
         const data = await conversationApi.getChats();
-        if (!cancelled) setChats(Array.isArray(data) ? data : []);
+        if (!cancelled) {
+          const normalizedChats = (Array.isArray(data) ? data : []).map(c => ({
+            ...c,
+            jid: c.jid || c.id || c.remoteJid
+          }));
+          setChats(normalizedChats);
+        }
       } catch (err: unknown) {
         if (!cancelled) {
           setChatsError(err instanceof Error ? err.message : "Failed to load chats");
@@ -446,7 +454,22 @@ export function ConversationsPage() {
       // Send typing stopped
       conversationApi.sendTyping(selectedChat.sessionName, selectedJid, "paused").catch(() => {});
     } catch (err: unknown) {
-      setSendError(err instanceof Error ? err.message : "Failed to send message");
+      const axiosErr = err as any;
+      const upstreamMsg = axiosErr?.response?.data?.details?.response?.message;
+      const detailsMsg = axiosErr?.response?.data?.details?.message || axiosErr?.response?.data?.details;
+      const topMsg = axiosErr?.response?.data?.error;
+      // Check for "number not on WhatsApp" scenario
+      if (Array.isArray(upstreamMsg) && upstreamMsg.some((m: any) => m.exists === false)) {
+        setSendError("This number is not registered on WhatsApp.");
+      } else if (typeof detailsMsg === 'string') {
+        setSendError(detailsMsg);
+      } else if (typeof topMsg === 'string') {
+        setSendError(topMsg);
+      } else if (err instanceof Error) {
+        setSendError(err.message);
+      } else {
+        setSendError("Failed to send message — please try again.");
+      }
     }
   }, [selectedJid, selectedChat]);
 
@@ -486,7 +509,7 @@ export function ConversationsPage() {
         )
       );
     } catch (err: unknown) {
-      setSendError(err instanceof Error ? err.message : "Failed to send media");
+      setSendError((err as any)?.details?.message || (err as any)?.error || (err instanceof Error ? err.message : "Failed to send media"));
     }
   }, [selectedJid]);
 
