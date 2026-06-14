@@ -8,20 +8,23 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorStack: string | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorStack: null };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, errorStack: error.stack ?? null };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[ErrorBoundary]", error, info.componentStack);
+    console.error('[ErrorBoundary] Uncaught error:', error.message);
+    console.error('[ErrorBoundary] Component stack:', info.componentStack);
+    console.error('[ErrorBoundary] Stack trace:', error.stack);
   }
 
   handleReload = () => {
@@ -42,8 +45,8 @@ export class ErrorBoundary extends Component<Props, State> {
               An unexpected error occurred. This is likely a temporary issue.
             </p>
             {import.meta.env.DEV && this.state.error && (
-              <pre className="text-left text-xs text-red-400 bg-red-500/5 border border-red-500/10 rounded-xl p-4 mb-6 overflow-auto max-h-40">
-                {this.state.error.message}
+              <pre className="text-left text-xs text-red-400 bg-red-500/5 border border-red-500/10 rounded-xl p-4 mb-6 overflow-auto max-h-48">
+                {this.state.errorStack || this.state.error.message}
               </pre>
             )}
             <div className="flex gap-3 justify-center mt-6">
