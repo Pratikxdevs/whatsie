@@ -14,6 +14,7 @@ import { ConversationsPage } from "./pages/ConversationsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { BillingPage } from "./pages/BillingPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -104,8 +105,8 @@ export default function App() {
                 </Route>
               </Route>
 
-              {/* Catch all */}
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              {/* Catch all — show 404 page */}
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </AuthProvider>
         </Router>
