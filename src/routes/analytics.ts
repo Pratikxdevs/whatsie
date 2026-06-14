@@ -56,6 +56,7 @@ router.get('/message-volume', async (req, res) => {
       outbound: Number(r.outbound),
     }));
 
+    res.set('Cache-Control', 'private, max-age=60');
     return res.json({ data });
   } catch (err: any) {
     logger.error({ err }, 'Analytics message-volume error');
@@ -82,6 +83,7 @@ router.get('/conversion-funnel', async (req, res) => {
       count: g._count,
     }));
 
+    res.set('Cache-Control', 'private, max-age=120');
     return res.json({ funnel });
   } catch (err: any) {
     logger.error({ err }, 'Analytics conversion-funnel error');
@@ -110,6 +112,7 @@ router.get('/dashboard-stats', async (req, res) => {
 
     const conversionRate = totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : 0;
 
+    res.set('Cache-Control', 'private, max-age=30');
     return res.json({ totalLeads, openConversations, messagesThisMonth, activeBots, conversionRate });
   } catch (err: any) {
     logger.error({ err }, 'Analytics dashboard-stats error');
