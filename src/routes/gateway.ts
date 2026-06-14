@@ -40,7 +40,7 @@ const verifyWhatsAppSignature = (req: Request, res: Response, next: NextFunction
   const secret = process.env.EVOLUTION_API_SECRET!;
 
   if (!signature) {
-    logger.warn('Gateway received webhook missing signature');
+    logger.warn({ headers: req.headers }, 'Gateway received webhook missing signature');
     return res.status(401).json({ error: 'Missing Signature' });
   }
 

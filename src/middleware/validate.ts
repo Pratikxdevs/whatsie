@@ -12,6 +12,8 @@ export function validateBody(schema: ZodSchema) {
     const result = schema.safeParse(req.body);
     if (!result.success) {
       const errors = formatZodError(result.error);
+      const { logger } = require('../config/logger');
+      logger.warn({ url: req.originalUrl, body: req.body, errors }, 'Validation failed (400)');
       return res.status(400).json(createAppError(ErrorCode.API_004, 'Validation failed', { errors }));
     }
     req.body = result.data;

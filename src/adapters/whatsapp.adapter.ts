@@ -21,7 +21,7 @@ export class WhatsAppAdapter {
         return await sendText(sessionName, {
           number: remoteJid,
           text,
-          delay: 1200,
+          delay: 500,
         });
       } catch (err: any) {
         const status = err?.response?.status || 'UNKNOWN';

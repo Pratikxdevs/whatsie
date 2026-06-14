@@ -111,7 +111,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       default:
         return (
           <p className="text-sm text-[#EBEBF0] whitespace-pre-wrap break-words">
-            {message.content}
+            {typeof message.content === 'object' ? JSON.stringify(message.content, null, 2) : message.content}
           </p>
         );
     }

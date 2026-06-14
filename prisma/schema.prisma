@@ -9,41 +9,40 @@ datasource db {
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  plan      String   @default("free")
-  status    String   @default("active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  users              User[]
+  id                 String              @id @default(uuid())
+  name               String
+  plan               String              @default("free")
+  status             String              @default("active")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  aiLogs             AiLog[]
+  apiKeys            ApiKey[]
+  auditLogs          AuditLog[]
+  billingUsages      BillingUsage[]
   bots               Bot[]
-  leads              Lead[]
   conversations      Conversation[]
+  events             Event[]
+  leads              Lead[]
   messages           Message[]
+  users              User[]
   workflows          Workflow[]
   workflowExecutions WorkflowExecution[]
-  apiKeys            ApiKey[]
-  events             Event[]
-  billingUsages      BillingUsage[]
-  aiLogs             AiLog[]
-  auditLogs          AuditLog[]
 }
 
 model User {
   id            String           @id @default(uuid())
   clerkId       String?          @unique
   tenantId      String
-  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   email         String           @unique
-  name          String?
-  role          String           @default("admin") // M-007: admin | agent | viewer
   passwordHash  String?
+  role          String           @default("viewer")
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
-  refreshTokens RefreshToken[]
-  credentials   UserCredential[]
+  name          String?
   bots          Bot[]
+  refreshTokens RefreshToken[]
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  credentials   UserCredential[]
 
   @@index([tenantId])
   @@index([clerkId])
@@ -52,9 +51,7 @@ model User {
 model Bot {
   id          String   @id @default(uuid())
   tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
   displayName String
   platform    String
   sessionName String?  @unique
@@ -62,30 +59,30 @@ model Bot {
   config      Json?    @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  leads Lead[]
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id])
+  leads       Lead[]
 
   @@index([tenantId])
   @@index([userId])
 }
 
 model Lead {
-  id         String   @id @default(uuid())
-  tenantId   String
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  botId      String?
-  bot        Bot?     @relation(fields: [botId], references: [id])
-  name       String?
-  phone      String?
-  email      String?
-  source     String?
-  status     String   @default("new")
-  botPaused  Boolean  @default(false)
-  attributes Json?    @default("{}")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
+  id                 String              @id @default(uuid())
+  tenantId           String
+  botId              String?
+  name               String?
+  phone              String?
+  email              String?
+  source             String?
+  status             String              @default("new")
+  attributes         Json?               @default("{}")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  botPaused          Boolean             @default(false)
   conversations      Conversation[]
+  bot                Bot?                @relation(fields: [botId], references: [id])
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   workflowExecutions WorkflowExecution[]
 
   @@index([tenantId])
@@ -95,19 +92,18 @@ model Lead {
 model Conversation {
   id             String    @id @default(uuid())
   tenantId       String
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   leadId         String
-  lead           Lead      @relation(fields: [leadId], references: [id])
   platform       String
   externalUserId String
   status         String    @default("open")
-  intent         String?
-  healthScore    Int       @default(100)
   lastMessageAt  DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-
-  messages Message[]
+  healthScore    Int       @default(100)
+  intent         String?
+  lead           Lead      @relation(fields: [leadId], references: [id])
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages       Message[]
 
   @@index([tenantId])
   @@index([leadId])
@@ -116,32 +112,31 @@ model Conversation {
 model Message {
   id                String       @id @default(uuid())
   tenantId          String
-  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversationId    String
-  conversation      Conversation @relation(fields: [conversationId], references: [id])
-  direction         String // in, out
+  direction         String
   content           String?
   messageType       String       @default("text")
-  status            String       @default("pending") // pending, sent, delivered, read, failed
   platformMessageId String?
   metadata          Json?        @default("{}")
   createdAt         DateTime     @default(now())
+  status            String       @default("pending")
+  conversation      Conversation @relation(fields: [conversationId], references: [id])
+  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
   @@index([platformMessageId])
 }
 
 model Workflow {
-  id            String   @id @default(uuid())
+  id            String              @id @default(uuid())
   tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name          String
   triggerIntent String
-  steps         Json     @default("[]") // [{ key: "name", prompt: "What is your name?" }]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  executions WorkflowExecution[]
+  steps         Json                @default("[]")
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  executions    WorkflowExecution[]
 
   @@index([tenantId])
 }
@@ -149,16 +144,16 @@ model Workflow {
 model WorkflowExecution {
   id               String   @id @default(uuid())
   tenantId         String
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   workflowId       String
-  workflow         Workflow @relation(fields: [workflowId], references: [id])
   leadId           String
-  lead             Lead     @relation(fields: [leadId], references: [id])
   currentStepIndex Int      @default(0)
-  status           String   @default("active") // active, completed, cancelled
+  status           String   @default("active")
   collectedData    Json     @default("{}")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  lead             Lead     @relation(fields: [leadId], references: [id])
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflow         Workflow @relation(fields: [workflowId], references: [id])
 
   @@index([tenantId])
   @@index([leadId])
@@ -167,10 +162,10 @@ model WorkflowExecution {
 model ApiKey {
   id        String   @id @default(uuid())
   tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   keyHash   String   @unique
   name      String?
   createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
 }
@@ -178,10 +173,10 @@ model ApiKey {
 model Event {
   id        String   @id @default(uuid())
   tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   type      String
   payload   Json?
   createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
 }
@@ -189,11 +184,11 @@ model Event {
 model BillingUsage {
   id          String   @id @default(uuid())
   tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   metric      String
   quantity    BigInt
   periodStart DateTime
   periodEnd   DateTime
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, metric, periodStart])
   @@index([tenantId])
@@ -202,13 +197,13 @@ model BillingUsage {
 model AiLog {
   id               String   @id @default(uuid())
   tenantId         String
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   model            String
   promptTokens     Int
   completionTokens Int
   cost             Decimal?
   metadata         Json?
   createdAt        DateTime @default(now())
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
 }
@@ -216,12 +211,12 @@ model AiLog {
 model AuditLog {
   id        String   @id @default(uuid())
   tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  action    String // credential_changed, bot_deleted, role_updated
-  actorId   String? // user.id
-  targetId  String? // The ID of the thing being changed
+  action    String
+  actorId   String?
+  targetId  String?
   details   Json?
   createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
 }
@@ -229,11 +224,11 @@ model AuditLog {
 model RefreshToken {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tokenHash String   @unique
   expiresAt DateTime
   revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tokenHash])
@@ -242,13 +237,13 @@ model RefreshToken {
 model UserCredential {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  provider  String // 'groq', 'openai', 'openrouter', 'gemini', 'evolution', 'telegram'
-  keyName   String // display name like "My Groq Key"
-  keyValue  String // the actual API key value
+  provider  String
+  keyName   String
+  keyValue  String
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, provider, keyName])
   @@index([userId])

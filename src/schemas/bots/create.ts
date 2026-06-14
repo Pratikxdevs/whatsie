@@ -7,10 +7,10 @@ export const createBotSchema = z.object({
   }),
   system_prompt: z.string().max(10000).optional(),
   ai_engine: z.string().max(100).optional(),
-  api_key: z.string().max(5000).optional(),
-  bot_token: z.string().max(5000).optional(),
+  api_key: z.string().max(5000).trim().optional(),
+  bot_token: z.string().max(5000).trim().optional(),
   temperature: z.number().min(0).max(2).optional(),
-  max_tokens: z.number().int().min(1).max(100000).optional(),
+  max_tokens: z.number().int().min(1).max(2000000).optional(),
   model: z.string().max(250).optional(),
 });
 

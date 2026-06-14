@@ -266,7 +266,7 @@ export function AddBotModal({ isOpen, onClose, onComplete }: {
                     type="number"
                     value={maxTokens}
                     min={1}
-                    max={128000}
+                    max={2000000}
                     onChange={e => { const val = parseInt(e.target.value); setMaxTokens(isNaN(val) ? 1024 : val); }}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
                   />
