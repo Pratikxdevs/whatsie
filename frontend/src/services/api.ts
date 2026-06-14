@@ -196,6 +196,15 @@ export const conversationApi = {
     return res.data.message ?? res.data;
   },
 
+  updateStatus: async (conversationId: string, status: 'open' | 'closed') => {
+    const res = await api.patch(`/conversations/${conversationId}/status`, { status });
+    return res.data.conversation ?? res.data;
+  },
+
+  deleteConversation: async (conversationId: string) => {
+    await api.delete(`/conversations/${conversationId}`);
+  },
+
   sendMedia: async (conversationId: string, file: File, messageType: string) => {
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
