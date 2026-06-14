@@ -183,8 +183,6 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-
-
 // DELETE /api/workspaces/:id - Delete a bot / instance
 router.delete('/:id', async (req, res) => {
   try {

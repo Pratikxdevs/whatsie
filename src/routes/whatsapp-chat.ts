@@ -6,11 +6,14 @@ import * as EvoApi from '../adapters/evolutionApi';
 
 const router = Router();
 
-router.post('/test-send', async (req: Request, res: Response) => {
+// GET /api/whatsapp/health — Check Evolution API reachability (no auth)
+router.get('/health', async (_req: Request, res: Response) => {
   try {
-    throw new Error('Test error');
+    const instances = await EvoApi.fetchInstances();
+    const count = Array.isArray(instances) ? instances.length : 0;
+    return res.json({ status: 'ok', instances: count });
   } catch (error: any) {
-    return res.status(500).json({ error: 'Failed to send message', details: "[object Object]" });
+    return res.status(503).json({ status: 'unavailable', error: error.message });
   }
 });
 
