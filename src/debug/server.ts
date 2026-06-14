@@ -151,13 +151,18 @@ async function getSystemHealth() {
 
   // Evolution API
   try {
-    const start = Date.now();
+    const evoKey = process.env.EVOLUTION_API_KEY;
     const url = process.env.EVOLUTION_API_URL || 'http://localhost:8081';
-    const res = await fetch(`${url}/instance/fetchInstances`, {
-      headers: { apikey: process.env.EVOLUTION_API_KEY || '' },
-      signal: AbortSignal.timeout(5000),
-    });
-    checks.evolutionApi = { status: res.ok ? 'ok' : 'degraded', latency: Date.now() - start };
+    if (!evoKey) {
+      checks.evolutionApi = { status: 'degraded', error: 'EVOLUTION_API_KEY not set' };
+    } else {
+      const start = Date.now();
+      const res = await fetch(`${url}/instance/fetchInstances`, {
+        headers: { apikey: evoKey },
+        signal: AbortSignal.timeout(5000),
+      });
+      checks.evolutionApi = { status: res.ok ? 'ok' : 'degraded', latency: Date.now() - start };
+    }
   } catch (err: any) {
     checks.evolutionApi = { status: 'error', error: err.message };
   }

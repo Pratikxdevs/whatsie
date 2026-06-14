@@ -33,7 +33,7 @@ router.get('/chats', async (req: Request, res: Response) => {
 
     let allChats: any[] = [];
     await Promise.allSettled(
-      bots.map(async (bot) => {
+      bots.map(async (bot: any) => {
         if (!bot.sessionName) return;
         try {
           const data = await EvoApi.findChats(bot.sessionName);
@@ -79,7 +79,7 @@ router.get('/contacts', async (req: Request, res: Response) => {
     const whereId = typeof req.query.q === 'string' ? req.query.q : undefined;
 
     await Promise.allSettled(
-      bots.map(async (bot) => {
+      bots.map(async (bot: any) => {
         if (!bot.sessionName) return;
         try {
           const data = await EvoApi.findContacts(bot.sessionName, whereId);

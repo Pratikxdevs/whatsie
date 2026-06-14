@@ -33,7 +33,7 @@ router.get('/usage', async (req, res) => {
     });
 
     // CRITICAL: BigInt cannot be serialized to JSON — convert to Number
-    const serialized = usage.map(u => ({
+    const serialized = usage.map((u: any) => ({
       ...u,
       quantity: Number(u.quantity),
     }));
@@ -65,7 +65,7 @@ router.get('/usage/history', async (req, res) => {
     });
 
     // BigInt serialization
-    const serialized = usage.map(u => ({
+    const serialized = usage.map((u: any) => ({
       ...u,
       quantity: Number(u.quantity),
     }));

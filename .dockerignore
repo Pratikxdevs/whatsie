@@ -1,47 +1,71 @@
-# Node
+# ── Node modules ──────────────────────────────────────
 node_modules/
 frontend/node_modules/
+platforms/
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Build output
+# ── Build output (generated inside container) ─────────
 dist/
 frontend/dist/
 build/
+*.tsbuildinfo
 
-# Environment & secrets
+# ── Environment & secrets ─────────────────────────────
 .env
 .env.*
+!.env.example
 apikeys.txt
 bypassall.txt
 *.pem
 *.key
+*.p12
+*.crt
 
-# Git & CI
+# ── Git & CI ──────────────────────────────────────────
 .git/
 .gitignore
+.gitattributes
 .github/
 
-# Planning & documentation
+# ── Planning & agent artifacts (not needed in image) ──
 .planning/
 .agent/
+.gemini/
+
+# ── Documentation ─────────────────────────────────────
 *.md
+!prisma/README.md
 ARCHITECTURE.txt
 
-# Test artifacts
+# ── Test artifacts ────────────────────────────────────
 coverage/
 .nyc_output/
 test-results/
 src/__tests__/
+*.test.ts
+*.spec.ts
 
-# Dev tooling
+# ── Dev tooling ───────────────────────────────────────
 *.postman_collection.json
+*.postman_environment.json
 Dockerfile.dev
 docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
 
-# OS
+# ── OS artifacts ──────────────────────────────────────
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
 
-# TypeScript source
-# *.ts
-# !src/**/*.d.ts
+# ── Monitoring configs (injected via volume in prod) ──
+monitoring/
+
+# ── Vitest / editor config ────────────────────────────
+vitest.config.*
+.eslintrc*
+.prettierrc*
+tsconfig.tsbuildinfo

@@ -25,7 +25,7 @@ router.get('/', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const masked = credentials.map((cred) => ({
+    const masked = credentials.map((cred: any) => ({
       id: cred.id,
       provider: cred.provider,
       keyName: cred.keyName,

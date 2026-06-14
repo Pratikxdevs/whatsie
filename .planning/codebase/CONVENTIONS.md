@@ -1,132 +1,98 @@
-# CONVENTIONS
-**Updated:** 2026-06-15
-**Project:** CrmV2 — Whatsie WhatsApp AI CRM
+# CONVENTIONS.md — Code Style & Patterns
+**Last mapped:** 2026-06-14
 
-## TypeScript Configuration
-- **strict**: `true` — full strict mode
-- **target**: `ES2022`, **module**: `CommonJS`
-- **skipLibCheck**: `true` — skip third-party type errors
-- **Known pre-existing errors**: 11 errors in 8 files (all `TS7006: implicit any` on callback params)
-  - `src/ai/structuralizer.ts:42` — `.map(m =>` 
-  - `src/jobs/stalledConversations.ts:21` — `.map(c =>`
-  - `src/middleware/auth.ts:70` — `$transaction(async (tx) =>`
-  - `src/routes/analytics.ts:81` — `.map(g =>`
-  - `src/routes/billing.ts:36,68` — `.map(u =>`
-  - `src/routes/credentials.ts:28` — `.map((cred) =>`
-  - `src/routes/whatsapp-chat.ts:36,82` — `.map(async (bot) =>`
-  - `src/routes/workspaces.ts:49,52` — `.filter(b =>`, `.map(async (bot) =>`
-- **`as any`**: ~40 usages in src, mostly in Prisma extension, queue config, and adapter responses
-- **Frontend**: clean pass (0 TypeScript errors as of Phase 28)
+---
+
+## Language
+
+- TypeScript strict mode — `tsconfig.json`
+- `as any` used **44 times** in `src/` (non-test) — type safety debt
+- Error types: `catch (err: any)` pattern throughout — not using typed error classes
+- Named exports preferred over default exports in routes
+
+---
 
 ## Error Handling Pattern
 
-### Backend: Enriched Error Responses
-All API error handlers must use `enrichError()`:
 ```typescript
-import { enrichError } from '../errors/recovery';
+// Standard pattern across all routes:
+try {
+  // ...
+} catch (err: any) {
+  logger.error({ err }, 'context message');
+  return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+}
 
-// ✓ CORRECT — typed code + recovery action
-return res.status(502).json(enrichError('WA_003', err.message));
-
-// ✗ WRONG — generic, no recovery, not parseable by frontend
-return res.status(500).json({ error: 'Internal Server Error' });
-```
-
-The response shape is:
-```typescript
-interface EnrichedError {
-  code: string;          // e.g. 'WA_003'
-  message: string;       // user-facing hint from recovery map
-  detail: string | null; // original error detail
-  meta: Record<string, unknown> | null;
-  timestamp: string;
-  recovery: RecoveryAction | null;
+// Upstream 4xx pass-through (whatsapp-chat.ts):
+const upstreamStatus = error?.response?.status;
+if (upstreamStatus >= 400 && upstreamStatus < 500) {
+  return res.status(upstreamStatus).json({ error: '...', details: errorDetails });
 }
 ```
 
-**Remaining routes not yet converted** (see CONCERNS): `analytics.ts`, `billing.ts`, `conversations.ts` — still return `{ error: 'Internal Server Error' }`.
+---
 
-### Frontend: Recovery Handler
+## Route Pattern
+
 ```typescript
-import { errorRecovery } from './errorRecovery';
-
-// API interceptor reads recovery and dispatches automatically
-// Manual use in components:
-errorRecovery.handle('WA_002', recovery, { botId });  // opens QR modal
-errorRecovery.handle('AUTH_005', recovery);            // routes to settings
+// All routes:
+router.use(authenticateToken);               // middleware applied to router
+const tenantId = (req as AuthenticatedRequest).user!.tenantId;  // typed extraction
+const entity = await prisma.entity.findFirst({ where: { id, tenantId } }); // always tenant-scoped
+if (!entity) return res.status(404).json({ error: 'Not found' });
 ```
 
-## Logging Conventions
+---
 
-### Backend Category Tags
-Every `addLog()` call must include the correct `[SOURCE]` prefix in the message:
-```typescript
-addLog('info', '[BACKEND] → POST /api/workspaces', undefined, { source: 'backend', category: 'backend' });
-addLog('error', '[AI] Response generation FAILED', 'SYS_005', { source: 'ai', category: 'ai' });
-addLog('info', '[DATABASE] Bot.create — 45ms', undefined, { source: 'database', category: 'db' });
-addLog('warn', '[API] OpenRouter key FAILED', 'AUTH_005', { source: 'api', category: 'api' });
-addLog('info', '[DOCKER] crmv2-redis: Ready to accept connections', undefined, { source: 'docker', category: 'docker' });
-```
+## Logging
 
-Category is auto-derived from message prefix if `meta.category` not set. Categories: `frontend | backend | db | docker | api | ai | system`.
+- **Library:** Pino (structured JSON)
+- **Levels used:** `logger.info`, `logger.warn`, `logger.error`, `logger.fatal`
+- **Pattern:** `logger.error({ err }, 'human message')`
+- **No `console.log` in production routes** (4 console.error calls in debug/server.ts only)
+- Logger exposed via `src/config/logger.ts` singleton
 
-### Frontend Activity Logging
-```typescript
-import { errorLog } from './errorLog';
-
-// Non-error events
-errorLog.activityLog('→ POST /api/workspaces', { method: 'POST', url: '/api/workspaces', category: 'frontend' });
-
-// Error logging with auto-classification
-errorLog.logApiError(axiosError, '/api/workspaces/start');
-```
-
-## Database Conventions
-
-### Prisma Client Usage
-```typescript
-import { prisma, prismaUnfiltered } from '../db/prisma';
-
-// ALWAYS use filtered client for tenant data
-const bots = await prisma.bot.findMany({});  // tenantId auto-injected
-
-// ONLY use unfiltered for system/auth operations
-const user = await prismaUnfiltered.user.findUnique({ where: { clerkId } });
-```
-
-### Query Patterns
-- Always use `findMany` with explicit `where` for lists (even with tenant injection)
-- Avoid `findUnique` on models that could belong to another tenant
-- Use `$transaction` for multi-step operations that must be atomic
-
-## Auth Patterns
-```typescript
-// Route protection — always authenticateToken first
-router.get('/my-route', authenticateToken, async (req, res) => {
-  const tenantId = (req as AuthenticatedRequest).user!.tenantId;
-  // tenantContext is set by auth middleware
-});
-
-// Auth failures — always use enrichError
-return res.status(401).json(enrichError('AUTH_001', 'detail'));
-```
-
-## API Design Conventions
-- **Method semantics**: GET (read), POST (create), PUT (full update), PATCH (partial), DELETE
-- **Error shape**: always `EnrichedError` for errors (code + recovery)
-- **Success shape**: resource-specific (e.g. `{ workspace: Bot }`, `{ workspaces: Bot[] }`)
-- **Status codes**: 200 (ok), 201 (created), 400 (validation), 401 (auth), 403 (forbidden), 404 (not found), 409 (conflict), 500 (server error), 502 (upstream service error)
-
-## Naming Conventions
-- **Files**: `kebab-case.ts` (e.g. `whatsapp-chat.ts`, `request-logger.ts`)
-- **Types/Interfaces**: `PascalCase` (e.g. `NormalizedMessage`, `EnrichedError`)
-- **Functions**: `camelCase` (e.g. `enrichError`, `addLog`, `authenticateToken`)
-- **Constants**: `SCREAMING_SNAKE_CASE` (e.g. `ERROR_RECOVERY`, `MAX_LOGS`)
-- **Env vars**: `SCREAMING_SNAKE_CASE` (e.g. `EVOLUTION_API_URL`, `DEBUG_TOKEN`)
+---
 
 ## Frontend Conventions
-- **Components**: PascalCase files (e.g. `BotCard.tsx`, `RecoveryToast.tsx`)
-- **Services**: camelCase files (e.g. `api.ts`, `errorLog.ts`, `socketManager.ts`)
-- **Toast notifications**: always `sonner` toast (`toast.error()`, `toast.warning()`, `toast.info()`)
-- **Auth**: `useAuth()` from `@clerk/clerk-react`; non-React contexts use `clerkBridge.ts`
-- **Forms**: `react-hook-form` + `@hookform/resolvers/zod`
+
+- Functional components with hooks
+- `useState` + `useEffect` for data fetching (no React Query)
+- API calls in component `useEffect` with cancelled flag pattern:
+  ```typescript
+  let cancelled = false;
+  fetchData().then(data => { if (!cancelled) setState(data); });
+  return () => { cancelled = true; };
+  ```
+- Tailwind utility classes — no CSS modules
+- `sonner` toast for user feedback
+
+---
+
+## Validation
+
+- **Zod** schemas in `src/schemas/` for route body validation
+- `validateBody(schema)` middleware applied to POST routes
+- Frontend: `react-hook-form` + `@hookform/resolvers/zod`
+
+---
+
+## Socket.IO Events
+
+| Event (server→client) | Payload |
+|-----------------------|---------|
+| `new_message` | `{ conversationId, message }` |
+| `bot_status_change` | `{ botId, status, platform }` |
+| `conversation_update` | `{ conversationId, ... }` |
+| `lead_update` | `{ leadId, ... }` |
+
+---
+
+## ⚠️ Code Quality Issues
+
+1. **44 `as any` casts** in non-test src — each is a potential runtime type error
+2. **`src/normalizer/whatsapp.test.ts`** lives in production code dir — violates separation
+3. **Dead `src/api/auth.ts`** register/login endpoints — reachable in production (`POST /api/auth/register`, `POST /api/auth/login`) but authenticate with legacy JWT, not Clerk
+4. **`src/middleware/tenant.ts`** — imported nowhere, provides zero protection
+5. **`src/rateLimiter/index.ts`** — possible duplicate of `src/middleware/rateLimit.ts`
+6. **Debug server innerHTML** — `src/debug/server.ts:404,428,431,441` use raw `innerHTML` with server-sourced data. Risk if input validation in the log filter is bypassed

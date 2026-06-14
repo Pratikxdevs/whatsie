@@ -39,7 +39,7 @@ export async function runStructuralizer(tenantId: string, leadId: string, conver
 
     if (messages.length === 0) return;
 
-    const chatHistory = messages.map(m => ({
+    const chatHistory = messages.map((m: any) => ({
       role: m.direction === 'in' ? 'user' : 'assistant',
       content: m.content || '[media]'
     }));

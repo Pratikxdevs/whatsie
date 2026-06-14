@@ -1,7 +1,5 @@
 /// <reference types="vitest/globals" />
 // Test environment variables
-process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only';
-process.env.GATEWAY_SECURITY_TOKEN = 'test-gateway-token';
 process.env.EVOLUTION_API_SECRET = 'test-evolution-secret';
 process.env.EVOLUTION_API_KEY = 'test-evolution-key';
 process.env.EVOLUTION_API_URL = 'http://localhost:8080';
@@ -45,7 +43,6 @@ const mockPrisma = {
   event: createMockModel(),
   billingUsage: createMockModel(),
   aiLog: createMockModel(),
-  refreshToken: createMockModel(),
   $transaction: vi.fn().mockImplementation(async (fn: Function) => fn(mockPrisma)),
   $queryRaw: vi.fn().mockResolvedValue([]),
   $executeRaw: vi.fn().mockResolvedValue(0),
@@ -152,29 +149,6 @@ vi.mock('bullmq', () => {
         close: vi.fn().mockResolvedValue(undefined),
       };
     }),
-  };
-});
-
-// Discord.js mock
-vi.mock('discord.js', () => {
-  class MockClient {
-    login = vi.fn().mockResolvedValue('token');
-    destroy = vi.fn();
-    isReady = vi.fn().mockReturnValue(true);
-    on = vi.fn();
-    once = vi.fn();
-    user = { tag: 'TestBot#1234', id: '123456789' };
-    channels = {
-      fetch: vi.fn().mockResolvedValue({
-        isTextBased: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue({ id: 'msg-1' }),
-      }),
-    };
-  }
-  return {
-    Client: MockClient,
-    GatewayIntentBits: { Guilds: 1, GuildMessages: 2, DirectMessages: 4, MessageContent: 8 },
-    ChannelType: { GuildText: 0, DM: 1 },
   };
 });
 

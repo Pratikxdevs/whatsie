@@ -18,7 +18,7 @@ export async function detectStalledConversations() {
     });
 
     if (stalledConversations.length > 0) {
-      const ids = stalledConversations.map(c => c.id);
+      const ids = stalledConversations.map((c: any) => c.id);
       
       await prisma.conversation.updateMany({
         where: { id: { in: ids } },

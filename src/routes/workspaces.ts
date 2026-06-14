@@ -46,10 +46,10 @@ router.get('/', async (req, res) => {
     });
 
     // Sync status for bots that have a sessionName (connected to platform APIs)
-    const botsWithSession = bots.filter(b => b.sessionName && b.status !== 'disconnected');
+    const botsWithSession = bots.filter((b: any) => b.sessionName && b.status !== 'disconnected');
     if (botsWithSession.length > 0) {
       await Promise.allSettled(
-        botsWithSession.map(async (bot) => {
+        botsWithSession.map(async (bot: any) => {
           try {
               // WhatsApp — query Evolution API status
               const stateRes = await EvoApi.getConnectionState(bot.sessionName!);

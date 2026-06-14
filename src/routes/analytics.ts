@@ -78,7 +78,7 @@ router.get('/conversion-funnel', async (req, res) => {
       _count: true,
     });
 
-    const funnel = grouped.map(g => ({
+    const funnel = grouped.map((g: any) => ({
       status: g.status,
       count: g._count,
     }));

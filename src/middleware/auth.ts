@@ -67,7 +67,7 @@ export const authenticateToken = async (req: AuthenticatedRequest, res: Response
           const email = clerkUser.emailAddresses[0]?.emailAddress || 'unknown@example.com';
           const tenantName = email.split('@')[0] || 'My Workspace';
           
-          user = await prismaUnfiltered.$transaction(async (tx) => {
+          user = await prismaUnfiltered.$transaction(async (tx: any) => {
             let tenant = await tx.tenant.findFirst({ where: { users: { some: { clerkId: authState.userId } } } });
             if (!tenant) {
               tenant = await tx.tenant.create({
