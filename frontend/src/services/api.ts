@@ -322,6 +322,11 @@ export const billingApi = {
     return res.data.usage ?? res.data ?? [];
   },
 
+  getUsageHistory: async () => {
+    const res = await api.get('/billing/usage/history');
+    return res.data.usage ?? res.data ?? [];
+  },
+
   getAiLogs: async (params?: Record<string, unknown>) => {
     const res = await api.get('/billing/ai-logs', { params });
     return res.data.logs ?? res.data ?? [];
