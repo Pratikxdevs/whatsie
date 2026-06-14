@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
 import * as EvoApi from '../adapters/evolutionApi';
@@ -21,7 +21,7 @@ router.use(authenticateToken);
 
 router.get('/chats', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
+    const user = (req as AuthenticatedRequest).user!
     const bots = await prisma.bot.findMany({
       where: { tenantId: user.tenantId, platform: 'whatsapp' },
       select: { sessionName: true, displayName: true },
@@ -67,7 +67,7 @@ router.get('/chats', async (req: Request, res: Response) => {
 
 router.get('/contacts', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
+    const user = (req as AuthenticatedRequest).user!
     const bots = await prisma.bot.findMany({
       where: { tenantId: user.tenantId, platform: 'whatsapp' },
       select: { sessionName: true },
