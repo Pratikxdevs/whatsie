@@ -52,8 +52,8 @@ class SocketManager {
     });
 
     this.socket.on('connect', () => {
-      // Join tenant room AFTER connect (race condition proof)
-      this.socket!.emit('join_tenant', tenantId);
+      // Server auto-joins the tenant room on connect (index.ts socket.join(tenantId))
+      // No manual join_tenant needed — avoids tenant-id mismatch warnings
       this.resolveConnect?.();
     });
 
@@ -65,10 +65,7 @@ class SocketManager {
     });
 
     this.socket.on('reconnect', () => {
-      // Re-join tenant room after reconnect
-      if (this.tenantId) {
-        this.socket!.emit('join_tenant', this.tenantId);
-      }
+      // Server re-joins tenant room on reconnect automatically
       this.resolveConnect?.();
     });
 
