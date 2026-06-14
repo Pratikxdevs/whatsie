@@ -300,4 +300,60 @@ router.post('/:id/media', async (req, res) => {
   }
 });
 
+/**
+ * PATCH /api/conversations/:id/status
+ * Open or close a conversation.
+ * Body: { status: 'open' | 'closed' }
+ */
+router.patch('/:id/status', async (req, res) => {
+  try {
+    const tenantId = (req as AuthenticatedRequest).user!.tenantId;
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['open', 'closed'].includes(status)) {
+      return res.status(400).json({ error: 'status must be "open" or "closed"' });
+    }
+
+    const conversation = await prisma.conversation.findFirst({ where: { id, tenantId } });
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const updated = await prisma.conversation.update({
+      where: { id },
+      data: { status },
+    });
+
+    return res.json({ conversation: updated });
+  } catch (err: any) {
+    logger.error({ err }, '[conversations] PATCH status error');
+    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+  }
+});
+
+/**
+ * DELETE /api/conversations/:id
+ * Soft-delete a conversation by closing it (hard delete not supported).
+ */
+router.delete('/:id', async (req, res) => {
+  try {
+    const tenantId = (req as AuthenticatedRequest).user!.tenantId;
+    const { id } = req.params;
+
+    const conversation = await prisma.conversation.findFirst({ where: { id, tenantId } });
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // Soft-delete: close the conversation rather than hard delete to preserve message history
+    await prisma.conversation.update({ where: { id }, data: { status: 'closed' } });
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    logger.error({ err }, '[conversations] DELETE error');
+    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+  }
+});
+
 export default router;
