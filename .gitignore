@@ -1,38 +1,111 @@
+# ============================================================
 # Dependencies
+# ============================================================
 node_modules/
+.pnp
+.pnp.js
 
-# Environment
+# ============================================================
+# Environment & Secrets — NEVER COMMIT
+# ============================================================
 .env
 .env.local
 .env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Build output
+# API keys and secrets files
+apikeys.txt
+secrets.txt
+bypassall.txt
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+
+# ============================================================
+# Build Output
+# ============================================================
 dist/
+build/
 frontend/dist/
+frontend/build/
+out/
+.next/
+.nuxt/
 
-# Database
+# ============================================================
+# Database & Prisma
+# ============================================================
 /generated/prisma
+prisma/migrations/dev.db
+*.sqlite
+*.sqlite3
+*.db
 
+# ============================================================
 # Logs
+# ============================================================
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pino-pretty.log
+logs/
 
-# OS
+# ============================================================
+# OS & IDE
+# ============================================================
 .DS_Store
 Thumbs.db
-
-# IDE
+desktop.ini
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+.Spotlight-V100
+.Trashes
 
+# ============================================================
 # Testing
+# ============================================================
 coverage/
+.nyc_output/
+junit.xml
+test-results/
 
-# Secrets
-apikeys.txt
+# ============================================================
+# Runtime & Temp
+# ============================================================
+tmp/
+temp/
+.tmp/
+.cache/
+.parcel-cache/
 
-# Embedded repos
+# ============================================================
+# Vite / Frontend
+# ============================================================
+frontend/.vite/
+frontend/node_modules/
+*.local
+
+# ============================================================
+# Embedded / External Repos (never commit these)
+# ============================================================
 platforms/evolution-api/
 whatsie/
+
+# ============================================================
+# Planning / Agent Scratch
+# ============================================================
+.agent/
+.planning/quick/
+.planning/threads/
+
+# Large reference docs committed by mistake
+ARCHITECTURE.txt
