@@ -93,6 +93,22 @@ export function PhoneInput({
     return value;
   });
 
+  // Sync state if value prop changes externally
+  useEffect(() => {
+    setDisplayValue(value || '');
+    if (value) {
+      try {
+        const parsed = parsePhoneNumberFromString(value);
+        if (parsed?.country) {
+          const matchedCountry = COUNTRIES.find((c) => c.code === parsed.country);
+          if (matchedCountry) {
+            setSelectedCountry(matchedCountry);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }, [value]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

@@ -42,7 +42,7 @@ describe('WorkflowEngine', () => {
 
   describe('checkTrigger', () => {
     it('returns workflow ID when trigger matches intent', async () => {
-      (prisma.workflow.findFirst as any).mockResolvedValueOnce({ id: workflowId, triggerIntent: 'PRICING' });
+      (prisma.workflow.findFirst).mockResolvedValueOnce({ id: workflowId, triggerIntent: 'PRICING' });
       const result = await WorkflowEngine.checkTrigger(tenantId, 'PRICING');
       expect(result).toBe(workflowId);
       expect(prisma.workflow.findFirst).toHaveBeenCalledWith({
@@ -51,7 +51,7 @@ describe('WorkflowEngine', () => {
     });
 
     it('returns null when no workflow matches intent', async () => {
-      (prisma.workflow.findFirst as any).mockResolvedValueOnce(null);
+      (prisma.workflow.findFirst).mockResolvedValueOnce(null);
       const result = await WorkflowEngine.checkTrigger(tenantId, 'UNKNOWN');
       expect(result).toBeNull();
     });
@@ -66,8 +66,8 @@ describe('WorkflowEngine', () => {
           { prompt: 'What is your email?', key: 'email' },
         ],
       };
-      (prisma.workflowExecution.create as any).mockResolvedValueOnce({ id: 'exec-1' });
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce(workflow);
+      (prisma.workflowExecution.create).mockResolvedValueOnce({ id: 'exec-1' });
+      (prisma.workflow.findUnique).mockResolvedValueOnce(workflow);
 
       const result = await WorkflowEngine.startWorkflow(tenantId, leadId, userId, workflowId);
 
@@ -82,16 +82,16 @@ describe('WorkflowEngine', () => {
     });
 
     it('returns handled false when workflow not found', async () => {
-      (prisma.workflowExecution.create as any).mockResolvedValueOnce({ id: 'exec-1' });
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce(null);
+      (prisma.workflowExecution.create).mockResolvedValueOnce({ id: 'exec-1' });
+      (prisma.workflow.findUnique).mockResolvedValueOnce(null);
 
       const result = await WorkflowEngine.startWorkflow(tenantId, leadId, userId, workflowId);
       expect(result.handled).toBe(false);
     });
 
     it('returns handled false when workflow has no steps', async () => {
-      (prisma.workflowExecution.create as any).mockResolvedValueOnce({ id: 'exec-1' });
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce({ id: workflowId, steps: [] });
+      (prisma.workflowExecution.create).mockResolvedValueOnce({ id: 'exec-1' });
+      (prisma.workflow.findUnique).mockResolvedValueOnce({ id: workflowId, steps: [] });
 
       const result = await WorkflowEngine.startWorkflow(tenantId, leadId, userId, workflowId);
       expect(result.handled).toBe(false);
@@ -114,10 +114,10 @@ describe('WorkflowEngine', () => {
     };
 
     it('saves step data and returns next step prompt', async () => {
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce(workflow);
-      (prisma.workflowExecution.findFirst as any).mockResolvedValueOnce(execution);
-      (prisma.workflowExecution.update as any).mockResolvedValueOnce({});
-      (prisma.lead.update as any).mockResolvedValueOnce({});
+      (prisma.workflow.findUnique).mockResolvedValueOnce(workflow);
+      (prisma.workflowExecution.findFirst).mockResolvedValueOnce(execution);
+      (prisma.workflowExecution.update).mockResolvedValueOnce({});
+      (prisma.lead.update).mockResolvedValueOnce({});
 
       const result = await WorkflowEngine.processStep(tenantId, leadId, userId, 'John', workflowId, 0);
 
@@ -131,9 +131,9 @@ describe('WorkflowEngine', () => {
     });
 
     it('auto-maps email field to lead', async () => {
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce(workflow);
-      (prisma.workflowExecution.findFirst as any).mockResolvedValueOnce(execution);
-      (prisma.workflowExecution.update as any).mockResolvedValueOnce({});
+      (prisma.workflow.findUnique).mockResolvedValueOnce(workflow);
+      (prisma.workflowExecution.findFirst).mockResolvedValueOnce(execution);
+      (prisma.workflowExecution.update).mockResolvedValueOnce({});
 
       await WorkflowEngine.processStep(tenantId, leadId, userId, 'john@test.com', workflowId, 1);
 
@@ -144,9 +144,9 @@ describe('WorkflowEngine', () => {
     });
 
     it('completes workflow on last step', async () => {
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce(workflow);
-      (prisma.workflowExecution.findFirst as any).mockResolvedValueOnce(execution);
-      (prisma.workflowExecution.update as any).mockResolvedValueOnce({});
+      (prisma.workflow.findUnique).mockResolvedValueOnce(workflow);
+      (prisma.workflowExecution.findFirst).mockResolvedValueOnce(execution);
+      (prisma.workflowExecution.update).mockResolvedValueOnce({});
 
       const result = await WorkflowEngine.processStep(tenantId, leadId, userId, 'ok', workflowId, 2);
 
@@ -161,8 +161,8 @@ describe('WorkflowEngine', () => {
     });
 
     it('returns handled false when workflow not found', async () => {
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce(null);
-      (prisma.workflowExecution.findFirst as any).mockResolvedValueOnce(execution);
+      (prisma.workflow.findUnique).mockResolvedValueOnce(null);
+      (prisma.workflowExecution.findFirst).mockResolvedValueOnce(execution);
 
       const result = await WorkflowEngine.processStep(tenantId, leadId, userId, 'text', workflowId, 0);
       expect(result.handled).toBe(false);
@@ -170,8 +170,8 @@ describe('WorkflowEngine', () => {
     });
 
     it('returns handled false when execution not found', async () => {
-      (prisma.workflow.findUnique as any).mockResolvedValueOnce(workflow);
-      (prisma.workflowExecution.findFirst as any).mockResolvedValueOnce(null);
+      (prisma.workflow.findUnique).mockResolvedValueOnce(workflow);
+      (prisma.workflowExecution.findFirst).mockResolvedValueOnce(null);
 
       const result = await WorkflowEngine.processStep(tenantId, leadId, userId, 'text', workflowId, 0);
       expect(result.handled).toBe(false);

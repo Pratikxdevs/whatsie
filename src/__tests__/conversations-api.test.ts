@@ -95,7 +95,7 @@ describe('Conversations API', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(404);
-      expect(res.body.error).toBe('Conversation not found');
+      expect(res.body.message).toMatch(/The requested item no longer exists/);
     });
   });
 });

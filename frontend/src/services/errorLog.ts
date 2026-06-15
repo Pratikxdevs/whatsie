@@ -15,7 +15,7 @@ export interface ErrorEntry {
   source: 'api' | 'component' | 'unhandled' | 'user' | 'activity';
 }
 
-const STORAGE_KEY = 'crmv2_error_log';
+const STORAGE_KEY = 'whatsie_error_log';
 const MAX_STORED = 200;
 
 /**

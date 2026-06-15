@@ -102,6 +102,7 @@ export function BotConfigForm({ botId, name = '', systemPrompt = '', aiEngine = 
         onProviderChange={p => updateForm({ aiEngine: p })}
         onKeyChange={k => { setKeySaved(false); updateForm({ apiKey: k }); }}
         showModels
+        selectedModel={form.model}
         onModelChange={m => updateForm({ model: m })}
       />
       {keySaved && !form.apiKey && (
