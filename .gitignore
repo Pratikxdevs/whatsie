@@ -15,7 +15,7 @@ node_modules/
 .env.test.local
 .env.production.local
 
-# API keys and secrets files
+# Secret / key files found in repo root
 apikeys.txt
 secrets.txt
 bypassall.txt
@@ -35,6 +35,7 @@ frontend/build/
 out/
 .next/
 .nuxt/
+*.tsbuildinfo
 
 # ============================================================
 # Database & Prisma
@@ -46,7 +47,7 @@ prisma/migrations/dev.db
 *.db
 
 # ============================================================
-# Logs
+# Logs & Test Artefacts
 # ============================================================
 *.log
 npm-debug.log*
@@ -55,6 +56,12 @@ yarn-error.log*
 lerna-debug.log*
 pino-pretty.log
 logs/
+test_output.log
+tsc_errors.log
+coverage/
+.nyc_output/
+junit.xml
+test-results/
 
 # ============================================================
 # OS & IDE
@@ -69,14 +76,6 @@ desktop.ini
 *~
 .Spotlight-V100
 .Trashes
-
-# ============================================================
-# Testing
-# ============================================================
-coverage/
-.nyc_output/
-junit.xml
-test-results/
 
 # ============================================================
 # Runtime & Temp
@@ -95,20 +94,52 @@ frontend/node_modules/
 *.local
 
 # ============================================================
-# Embedded / External Repos (never commit these)
+# Compiled / Binary Artefacts
+# ============================================================
+# teleapi.a — static library binary, not part of source
+*.a
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# ============================================================
+# Unnecessary Documentation Files in Repo Root
+# ============================================================
+ARCHITECTURE.txt
+architecture.html
+masterdoc.md
+frontend_handoff_spec.md
+DB_SCHEMA.md
+phases.prompt
+*.postman_collection.json
+*.postman_environment.json
+docker-compose.override.yml
+grafana-dashboard.json.example
+prometheus.yml.example
+
+# ============================================================
+# Embedded / External Git Repos (never commit these)
 # ============================================================
 platforms/evolution-api/
 whatsie/
 
+# Catch any other accidentally nested .git dirs
+# (excludes the root .git which git itself manages)
+platforms/**/.git/
+platforms/**/node_modules/
+
 # ============================================================
-# Planning / Agent Scratch
+# Agent / Planning Scratch (local only)
 # ============================================================
 .agent/
 .planning/quick/
 .planning/threads/
+.openclaude/
 
-# Large reference docs committed by mistake
-ARCHITECTURE.txt
-*.postman_collection.json
-docker-compose.override.yml
-*.postman_environment.json
+# ============================================================
+# Package Manager Locks (keep package-lock.json, ignore others)
+# ============================================================
+yarn.lock
+pnpm-lock.yaml
