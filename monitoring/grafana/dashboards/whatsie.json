@@ -119,10 +119,10 @@
     }
   ],
   "schemaVersion": 39,
-  "tags": ["crmv2"],
+  "tags": ["whatsie"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
-  "title": "CrmV2 Overview",
-  "uid": "crmv2-overview",
+  "title": "Whatsie Overview",
+  "uid": "whatsie-overview",
   "version": 1
 }

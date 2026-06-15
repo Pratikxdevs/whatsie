@@ -9,7 +9,7 @@
 import { spawn } from 'child_process';
 import { logger } from '../config/logger';
 
-const containers = ['crmv2-postgres', 'crmv2-redis', 'crmv2-evolution-api'];
+const containers = ['whatsie-postgres', 'whatsie-redis', 'whatsie-evolution-api'];
 
 const IS_ENABLED =
   process.env.DOCKER_LOGGING === 'true' ||
@@ -18,11 +18,13 @@ const IS_ENABLED =
 export function startDockerLogStream() {
   if (!IS_ENABLED) return;
 
-  // addLog is imported lazily to avoid circular dep
-  let addLogFn: ((level: string, msg: string, code?: string, meta?: Record<string, unknown>) => void) | null = null;
-  try {
-    addLogFn = require('./server').addLog;
-  } catch { /* debug server not started yet */ }
+  const getAddLog = () => {
+    try {
+      return require('./server').addLog;
+    } catch {
+      return null;
+    }
+  };
 
   containers.forEach(container => {
     const p = spawn('docker', ['logs', '-f', '--tail', '20', container], {
@@ -33,6 +35,7 @@ export function startDockerLogStream() {
       const lines = data.toString().split('\n').filter((l: string) => l.trim().length > 0);
       lines.forEach((line: string) => {
         logger.info({ module: 'docker', container, category: 'docker' }, line);
+        const addLogFn = getAddLog();
         if (addLogFn) {
           addLogFn('info', `[DOCKER] ${container}: ${line.trim()}`, undefined, {
             source: 'docker',
@@ -48,6 +51,7 @@ export function startDockerLogStream() {
       lines.forEach((line: string) => {
         const isError = /error|fatal|exception/i.test(line);
         logger.warn({ module: 'docker', container, category: 'docker' }, line);
+        const addLogFn = getAddLog();
         if (addLogFn) {
           addLogFn(isError ? 'error' : 'warn', `[DOCKER] ${container}: ${line.trim()}`, undefined, {
             source: 'docker',
@@ -65,6 +69,7 @@ export function startDockerLogStream() {
 
     p.on('close', (code) => {
       logger.debug({ module: 'docker', container, code, category: 'docker' }, 'Docker log stream closed');
+      const addLogFn = getAddLog();
       if (addLogFn) {
         addLogFn('warn', `[DOCKER] ${container} stream closed (code ${code})`, undefined, {
           source: 'docker',

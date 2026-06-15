@@ -1,5 +1,6 @@
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
+import { addLog } from '../debug/server';
 
 export async function detectStalledConversations() {
   try {
@@ -26,6 +27,9 @@ export async function detectStalledConversations() {
       });
 
       logger.info({ count: ids.length }, 'Marked conversations as stalled');
+      addLog('info', `[BACKEND] 🧹 Cron: Marked ${ids.length} conversations as stalled`, 'SYS_004', {
+        source: 'backend', category: 'backend', event: 'cron_stalled_convs', count: ids.length
+      });
     }
   } catch (err: any) {
     logger.error({ err: err.message }, 'Failed to detect stalled conversations');

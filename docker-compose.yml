@@ -3,11 +3,11 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: crmv2-postgres
+    container_name: whatsie-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-Crmv2-pgadmin}
+      POSTGRES_USER: ${POSTGRES_USER:-whatsie-pgadmin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-crmv2}
+      POSTGRES_DB: ${POSTGRES_DB:-whatsie}
     ports:
       - "7777:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: crmv2-redis
+    container_name: whatsie-redis
     ports:
       - "6379:6379"
     volumes:
@@ -26,7 +26,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: crmv2-prometheus
+    container_name: whatsie-prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -36,7 +36,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: crmv2-grafana
+    container_name: whatsie-grafana
     ports:
       - "3001:3000"
     volumes:
@@ -47,7 +47,7 @@ services:
 
   evolution-api:
     image: evoapicloud/evolution-api:latest
-    container_name: crmv2-evolution-api
+    container_name: whatsie-evolution-api
     ports:
       - "8081:8080"
     extra_hosts:
@@ -58,7 +58,7 @@ services:
       - SERVER_PORT=8080
       - SERVER_URL=http://localhost:8081
       - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://Crmv2-pgadmin:CrmV2%402026@postgres:5432/evolution_db?schema=evolution_api
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-whatsie-pgadmin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-evolution_db}?schema=evolution_api
       - DATABASE_CONNECTION_CLIENT_NAME=evolution_exchange
       - DATABASE_SAVE_DATA_INSTANCE=true
       - DATABASE_SAVE_DATA_NEW_MESSAGE=false
@@ -70,7 +70,7 @@ services:
       - DATABASE_SAVE_IS_ON_WHATSAPP=false
       - DATABASE_SAVE_IS_ON_WHATSAPP_DAYS=7
       - DATABASE_DELETE_MESSAGE=true
-      - POSTGRES_USERNAME=${POSTGRES_USER:-Crmv2-pgadmin}
+      - POSTGRES_USERNAME=${POSTGRES_USER:-whatsie-pgadmin}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DATABASE=${POSTGRES_DB:-evolution_db}
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}

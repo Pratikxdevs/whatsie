@@ -11,6 +11,7 @@
 
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
+import { addLog } from '../debug/server';
 
 /**
  * Record a billing usage metric for the current UTC month.
@@ -42,6 +43,10 @@ export async function recordBillingUsage(
         periodStart,
         periodEnd,
       },
+    });
+
+    addLog('info', `[BACKEND] 💰 Billing: Recorded ${quantity} ${metric} for tenant:${tenantId.slice(0,8)}`, undefined, {
+      source: 'backend', category: 'backend', event: 'billing_record', tenantId, metric, quantity
     });
   } catch (err) {
     logger.error({ err, tenantId, metric, quantity }, '[Billing] Failed to record usage');

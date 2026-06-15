@@ -1,5 +1,5 @@
 /**
- * Prisma Seed Script — Comprehensive test data for CrmV2
+ * Prisma Seed Script — Comprehensive test data for Whatsie
  *
  * Run with:  npx prisma db seed
  * Or:        npx tsx prisma/seed.ts

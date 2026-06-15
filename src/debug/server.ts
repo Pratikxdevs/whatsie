@@ -59,6 +59,12 @@ const requestStats = {
  * Add a log entry to the ring buffer
  */
 export function addLog(level: string, msg: string, code?: string, meta?: Record<string, unknown>) {
+  // If we are in the worker process, forward the log to the API process via Redis
+  if (process.env.IS_WORKER === 'true') {
+    redisConnection.publish('debug_logs', JSON.stringify({ level, msg, code, meta })).catch(() => {});
+    return;
+  }
+
   // Derive category from meta.category or msg prefix
   const category = (meta?.category as string) ||
     (msg.startsWith('[FRONTEND]') ? 'frontend' :
@@ -179,6 +185,18 @@ import { getProxyStats } from '../middleware/httpProxy';
  * Start the debug server
  */
 export function startDebugServer() {
+  // Subscribe to worker logs
+  const sub = redisConnection.duplicate();
+  sub.subscribe('debug_logs').catch(() => {});
+  sub.on('message', (channel: string, message: string) => {
+    if (channel === 'debug_logs') {
+      try {
+        const data = JSON.parse(message);
+        addLog(data.level, data.msg, data.code, data.meta);
+      } catch (err) {}
+    }
+  });
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://localhost:${PORT}`);
     const path = url.pathname;
@@ -201,18 +219,15 @@ export function startDebugServer() {
       return;
     }
     const auth = req.headers.authorization;
-    const queryToken = url.searchParams.get('token');
     
     let providedToken = null;
     if (auth && auth.startsWith('Bearer ')) {
       providedToken = auth.slice(7);
-    } else if (queryToken) {
-      providedToken = queryToken;
     }
 
     if (!providedToken || providedToken !== debugToken) {
       res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="debug"' });
-      res.end(JSON.stringify({ error: 'Unauthorized — set Authorization: Bearer <DEBUG_TOKEN> or use ?token=<DEBUG_TOKEN>' }));
+      res.end(JSON.stringify({ error: 'Unauthorized — set Authorization: Bearer <DEBUG_TOKEN>' }));
       return;
     }
 
@@ -607,9 +622,8 @@ function getDashboardHTML(): string {
 </div>
 
 <script>
-const urlParams = new URLSearchParams(window.location.search);
-const token = urlParams.get('token') || '';
-const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+const token = ''; // Token must be provided via Authorization header mechanism externally
+const headers = { 'Authorization': 'Bearer ' + token };
 
 let logs = [];
 let currentCat = 'all';
@@ -738,7 +752,6 @@ function clearLogs() {
 async function fetchInitialLogs() {
   try {
     const q = new URLSearchParams({ limit: '200' });
-    if (token) q.set('token', token);
     const res = await fetch('/api/logs?' + q, { headers });
     const data = await res.json();
     logs = [...data.logs].reverse(); // oldest first
@@ -779,7 +792,7 @@ async function fetchStats() {
 
 // SSE stream
 function connectStream() {
-  const streamUrl = '/api/stream' + (token ? '?token=' + encodeURIComponent(token) : '');
+  const streamUrl = '/api/stream';
   const dot = document.getElementById('live-dot');
   const es = new EventSource(streamUrl);
 

@@ -23,52 +23,10 @@ export interface AiConfig {
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_MODEL = 'meta-llama/llama-3-8b-instruct';
 
-/**
- * Resolve AI config for a tenant+user.
- * Always uses OpenRouter. Priority: bot config > user credential > env var.
- */
-export async function resolveAiConfig(tenantId: string, userId?: string): Promise<AiConfig> {
-  let botConfig: Record<string, any> = {};
-  try {
-    const bot = await prisma.bot.findFirst({
-      where: { tenantId, status: 'connected' },
-    });
-    if (bot?.config && typeof bot.config === 'object') {
-      botConfig = bot.config as Record<string, any>;
-    }
-  } catch {
-    // Fall through to env vars
-  }
+// resolveAiConfig is now canonically exported from src/ai/orchestrator.ts to prevent duplication
+import { resolveAiConfig } from '../ai/orchestrator';
 
-  // Check user's openrouter credential
-  let userApiKey: string | undefined;
-  if (userId) {
-    try {
-      const credential = await prisma.userCredential.findFirst({
-        where: { userId, provider: 'openrouter', isDefault: true },
-      });
-      if (credential) {
-        userApiKey = credential.keyValue;
-      }
-    } catch {
-      // Fall through to env var
-    }
-  }
-
-  const apiKey = botConfig.api_key || userApiKey || process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured');
-  const model = botConfig.model || process.env.DEFAULT_MODEL || DEFAULT_MODEL;
-
-  return {
-    provider: 'openrouter',
-    model,
-    apiKey,
-    baseURL: OPENROUTER_BASE_URL,
-    systemPrompt: botConfig.system_prompt || 'You are a helpful CRM assistant. Be concise and professional.',
-    temperature: botConfig.temperature ?? 0.7,
-    maxTokens: botConfig.max_tokens ?? 500,
-  };
-}
+export { resolveAiConfig };
 
 /**
  * Validate that an AI config has a working API key.
