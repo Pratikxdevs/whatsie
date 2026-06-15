@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { enrichError } from '../errors/recovery';
 import { prisma } from '../db/prisma';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../config/logger';
@@ -60,7 +61,7 @@ router.get('/message-volume', async (req, res) => {
     return res.json({ data });
   } catch (err: any) {
     logger.error({ err }, 'Analytics message-volume error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -87,7 +88,7 @@ router.get('/conversion-funnel', async (req, res) => {
     return res.json({ funnel });
   } catch (err: any) {
     logger.error({ err }, 'Analytics conversion-funnel error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -116,7 +117,7 @@ router.get('/dashboard-stats', async (req, res) => {
     return res.json({ totalLeads, openConversations, messagesThisMonth, activeBots, conversionRate });
   } catch (err: any) {
     logger.error({ err }, 'Analytics dashboard-stats error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 

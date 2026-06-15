@@ -30,7 +30,26 @@ import { logger, getContextLogger } from '../config/logger';
 import { addLog } from '../debug/server';
 import { recordBillingUsage } from '../billing/recordUsage';
 import { messagesReceivedTotal, messagesSentTotal, errorsTotal } from '../metrics';
-import { io } from '../index';
+import dotenv from 'dotenv';
+dotenv.config();
+process.env.IS_WORKER = 'true';
+
+if (process.env.NODE_ENV === 'production') {
+  console.log = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  console.debug = () => {};
+}
+
+import * as Sentry from '@sentry/node';
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.1 });
+}
+
+import { Emitter } from '@socket.io/redis-emitter';
+const io = new Emitter(redisConnection);
+
 import './dlq'; // Initialize DLQ monitor
 
 // ---------------------------------------------------------------------------

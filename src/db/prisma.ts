@@ -19,9 +19,11 @@ function getAddLog() {
   try { return require('../debug/server').addLog; } catch { return null; }
 }
 
-const basePrisma: any =
+import type { Prisma } from '@prisma/client';
+
+const basePrisma =
   globalThis.__prisma ??
-  new PrismaClient({
+  new PrismaClient<Prisma.PrismaClientOptions, 'query' | 'info' | 'warn' | 'error'>({
     log: [
       { emit: 'event', level: 'query' },
       { emit: 'event', level: 'info' },
@@ -30,7 +32,7 @@ const basePrisma: any =
     ],
   });
 
-basePrisma.$on('query', (e: any) => {
+(basePrisma as any).$on('query', (e: { query: string; params: string; duration: string }) => {
   logger.debug({ query: e.query, params: e.params, duration: e.duration }, 'Prisma Query');
   const addLog = getAddLog();
   const durationMs = parseInt(e.duration, 10);
@@ -44,17 +46,17 @@ basePrisma.$on('query', (e: any) => {
     );
   }
 });
-basePrisma.$on('info', (e: any) => {
+(basePrisma as any).$on('info', (e: { message: string }) => {
   logger.info({ msg: e.message }, 'Prisma Info');
   const addLog = getAddLog();
   if (addLog) addLog('info', `[DATABASE] ${e.message}`, undefined, { source: 'database', category: 'db' });
 });
-basePrisma.$on('warn', (e: any) => {
+(basePrisma as any).$on('warn', (e: { message: string }) => {
   logger.warn({ msg: e.message }, 'Prisma Warn');
   const addLog = getAddLog();
   if (addLog) addLog('warn', `[DATABASE] ${e.message}`, undefined, { source: 'database', category: 'db' });
 });
-basePrisma.$on('error', (e: any) => {
+(basePrisma as any).$on('error', (e: { message: string }) => {
   logger.error({ msg: e.message }, 'Prisma Error');
   const addLog = getAddLog();
   if (addLog) addLog('error', `[DATABASE] ERROR: ${e.message}`, 'DB_001', { source: 'database', category: 'db' });

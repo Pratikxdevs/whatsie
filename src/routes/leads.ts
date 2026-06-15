@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { enrichError } from '../errors/recovery';
 import { prisma } from '../db/prisma';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../config/logger';

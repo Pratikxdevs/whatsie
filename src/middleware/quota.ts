@@ -3,6 +3,7 @@ import { redisConnection } from '../queue/setup';
 import { prisma } from '../db/prisma';
 import { AuthenticatedRequest } from './auth';
 import { logger } from '../config/logger';
+import { addLog } from '../debug/server';
 
 // Plan-based daily message limits
 const PLAN_LIMITS: Record<string, number> = {
@@ -43,6 +44,9 @@ export const checkQuota = async (req: AuthenticatedRequest, res: Response, next:
 
     if (count > limit) {
       logger.warn({ tenantId, plan, count, limit }, 'Daily quota exceeded');
+      addLog('warn', `[BACKEND] ⛔ Quota Exceeded: tenant:${tenantId.slice(0,8)} (${count}/${limit})`, 'Q_005', {
+        source: 'backend', category: 'backend', event: 'quota_exceeded', tenantId, count, limit, plan
+      });
       return res.status(429).json({
         error: 'Daily quota exceeded',
         plan,

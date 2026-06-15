@@ -22,7 +22,6 @@ import billingRouter from './routes/billing';
 import conversationsRouter from './routes/conversations';
 import leadsRouter from './routes/leads';
 import credentialsRouter from './routes/credentials';
-import './workers/index'; // Spawns the BullMQ worker in the background
 
 import { redisConnection } from './queue/setup';
 import { register, httpRequestDurationSeconds } from './metrics';
@@ -31,8 +30,18 @@ import { setDebugLogger } from './config/logger';
 import { startDockerLogStream } from './debug/dockerLogs';
 import { requestLoggerMiddleware } from './middleware/requestLogger';
 import { startStalledConversationJob, stopStalledConversationJob } from './jobs/stalledConversations';
+import { createAdapter } from '@socket.io/redis-adapter';
 
 dotenv.config();
+
+// Disable console globally for production
+if (process.env.NODE_ENV === 'production') {
+  console.log = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  console.debug = () => {};
+}
 
 // Wire Pino logger to debug server ring buffer
 setDebugLogger(addLog);
@@ -47,7 +56,7 @@ const requiredEnvs = [
   'DATABASE_URL', 'REDIS_URL', 'GATEWAY_SECURITY_TOKEN', 'JWT_SECRET',
   'EVOLUTION_API_SECRET', 'EVOLUTION_API_KEY', 'EVOLUTION_API_URL',
   'CLERK_SECRET_KEY', 'CLERK_PUBLISHABLE_KEY', 'OPENROUTER_API_KEY',
-  'API_KEY_PEPPER', 'DEBUG_TOKEN', // C-001: required to prevent known-pepper API key attacks
+  'API_KEY_PEPPER', 'DEBUG_TOKEN', 'METRICS_TOKEN', // C-001: required to prevent known-pepper API key attacks
 ];
 const missingEnvs = requiredEnvs.filter(env => !process.env[env]);
 if (missingEnvs.length > 0) {
@@ -150,8 +159,15 @@ export const io = new Server(server, {
   cors: {
     origin: FRONTEND_URL,
     methods: ['GET', 'POST']
-  }
+  },
+  pingInterval: 10000,
+  pingTimeout: 5000,
 });
+
+// Setup Redis adapter for Socket.IO decoupling
+const pubClient = redisConnection;
+const subClient = pubClient.duplicate();
+io.adapter(createAdapter(pubClient, subClient));
 
 // Socket.IO authentication middleware
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -221,8 +237,12 @@ io.on('connection', (socket) => {
   });
 
   // Auto-join tenant room on connection
-  socket.join(tenantId);
-  logger.info({ socketId: socket.id, tenantId }, `Socket client auto-joined tenant workspace`);
+  if (tenantId) {
+    socket.join(tenantId);
+    logger.info({ socketId: socket.id, tenantId }, `Socket client auto-joined tenant workspace`);
+  } else {
+    logger.warn({ socketId: socket.id }, `Socket client connected without tenantId, not joining room`);
+  }
 
   // Allow joining additional rooms (validates tenant ownership)
   socket.on('join_tenant', (requestedTenantId: string) => {
@@ -246,6 +266,9 @@ io.on('connection', (socket) => {
     addLog('info', `[BACKEND] ← WebSocket disconnected — socket:${socket.id}`, undefined, {
       source: 'backend', category: 'backend', event: 'ws_disconnect', socketId: socket.id,
     });
+    if (tenantId) {
+      socket.leave(tenantId);
+    }
   });
 });
 
@@ -300,11 +323,7 @@ if (process.env.SENTRY_DSN) {
 
 // Infrastructure Health Checks
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
-  });
+  res.json({ status: 'ok' });
 });
 
 app.get('/ready', async (req, res) => {

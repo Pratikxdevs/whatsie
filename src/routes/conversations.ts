@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { enrichError } from '../errors/recovery';
 import { prisma } from '../db/prisma';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { WhatsAppAdapter } from '../adapters/whatsapp.adapter';
@@ -64,7 +65,7 @@ router.get('/', async (req, res) => {
 
     return res.json({ conversations, total, page, limit });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -86,7 +87,7 @@ router.get('/:id/messages', async (req, res) => {
       where: { id, tenantId },
     });
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json(enrichError('DB_005', 'Conversation not found'));
     }
 
     const [messages, total] = await Promise.all([
@@ -101,7 +102,7 @@ router.get('/:id/messages', async (req, res) => {
 
     return res.json({ messages, total, page, limit });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -121,7 +122,7 @@ router.post('/:id/messages', validateBody(sendMessageSchema), async (req, res) =
       include: { lead: true },
     });
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json(enrichError('DB_005', 'Conversation not found'));
     }
 
     // Determine initial send status — will be updated to 'sent' if dispatch succeeds
@@ -150,7 +151,7 @@ router.post('/:id/messages', validateBody(sendMessageSchema), async (req, res) =
         }
       } catch (sendErr: any) {
         logger.error({ err: sendErr }, '[conversations] Failed to dispatch message via WhatsApp');
-        return res.status(500).json({ error: 'Failed to send message', details: sendErr?.message || String(sendErr) });
+        return res.status(500).json(enrichError('WA_004', 'Failed to send message', sendErr?.message || String(sendErr)));
       }
     }
 
@@ -174,7 +175,7 @@ router.post('/:id/messages', validateBody(sendMessageSchema), async (req, res) =
 
     return res.json({ message });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -209,7 +210,7 @@ router.post('/:id/media', async (req, res) => {
       include: { lead: true },
     });
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json(enrichError('DB_005', 'Conversation not found'));
     }
 
     // Build content description for the DB record
@@ -267,7 +268,7 @@ router.post('/:id/media', async (req, res) => {
         }
       } catch (sendErr: any) {
         logger.error({ err: sendErr }, '[conversations] Failed to dispatch media via WhatsApp');
-        return res.status(500).json({ error: 'Failed to send media', details: sendErr?.message || String(sendErr) });
+        return res.status(500).json(enrichError('WA_004', 'Failed to send media', sendErr?.message || String(sendErr)));
       }
     }
 
@@ -296,7 +297,7 @@ router.post('/:id/media', async (req, res) => {
 
     return res.json({ message });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -317,7 +318,7 @@ router.patch('/:id/status', async (req, res) => {
 
     const conversation = await prisma.conversation.findFirst({ where: { id, tenantId } });
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json(enrichError('DB_005', 'Conversation not found'));
     }
 
     const updated = await prisma.conversation.update({
@@ -328,7 +329,7 @@ router.patch('/:id/status', async (req, res) => {
     return res.json({ conversation: updated });
   } catch (err: any) {
     logger.error({ err }, '[conversations] PATCH status error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -343,7 +344,7 @@ router.delete('/:id', async (req, res) => {
 
     const conversation = await prisma.conversation.findFirst({ where: { id, tenantId } });
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      return res.status(404).json(enrichError('DB_005', 'Conversation not found'));
     }
 
     // Soft-delete: close the conversation rather than hard delete to preserve message history
@@ -352,7 +353,7 @@ router.delete('/:id', async (req, res) => {
     return res.json({ success: true });
   } catch (err: any) {
     logger.error({ err }, '[conversations] DELETE error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 

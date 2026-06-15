@@ -32,24 +32,29 @@ router.get('/chats', async (req: Request, res: Response) => {
     }
 
     let allChats: any[] = [];
-    await Promise.allSettled(
-      bots.map(async (bot: any) => {
-        if (!bot.sessionName) return;
-        try {
-          const data = await EvoApi.findChats(bot.sessionName);
-          if (Array.isArray(data)) {
-            const taggedChats = data.map(chat => ({
-              ...chat,
-              sessionName: bot.sessionName,
-              botName: bot.displayName,
-            }));
-            allChats.push(...taggedChats);
+    // Batch parallel requests to prevent N+1 connection spikes
+    const chunkSize = 3;
+    for (let i = 0; i < bots.length; i += chunkSize) {
+      const chunk = bots.slice(i, i + chunkSize);
+      await Promise.allSettled(
+        chunk.map(async (bot: any) => {
+          if (!bot.sessionName) return;
+          try {
+            const data = await EvoApi.findChats(bot.sessionName);
+            if (Array.isArray(data)) {
+              const taggedChats = data.map(chat => ({
+                ...chat,
+                sessionName: bot.sessionName,
+                botName: bot.displayName,
+              }));
+              allChats.push(...taggedChats);
+            }
+          } catch (e: any) {
+            logger.warn(`Failed to fetch chats for bot ${bot.sessionName}: ${e.message}`);
           }
-        } catch (e: any) {
-          logger.warn(`Failed to fetch chats for bot ${bot.sessionName}: ${e.message}`);
-        }
-      })
-    );
+        })
+      );
+    }
 
     // Sort combined chats by last message timestamp (descending)
     allChats.sort((a, b) => {
@@ -78,20 +83,24 @@ router.get('/contacts', async (req: Request, res: Response) => {
     let allContacts: any[] = [];
     const whereId = typeof req.query.q === 'string' ? req.query.q : undefined;
 
-    await Promise.allSettled(
-      bots.map(async (bot: any) => {
-        if (!bot.sessionName) return;
-        try {
-          const data = await EvoApi.findContacts(bot.sessionName, whereId);
-          if (Array.isArray(data)) {
-            const taggedContacts = data.map(contact => ({ ...contact, sessionName: bot.sessionName }));
-            allContacts.push(...taggedContacts);
+    const chunkSize = 3;
+    for (let i = 0; i < bots.length; i += chunkSize) {
+      const chunk = bots.slice(i, i + chunkSize);
+      await Promise.allSettled(
+        chunk.map(async (bot: any) => {
+          if (!bot.sessionName) return;
+          try {
+            const data = await EvoApi.findContacts(bot.sessionName, whereId);
+            if (Array.isArray(data)) {
+              const taggedContacts = data.map(contact => ({ ...contact, sessionName: bot.sessionName }));
+              allContacts.push(...taggedContacts);
+            }
+          } catch (e: any) {
+            logger.warn(`Failed to fetch contacts for bot ${bot.sessionName}: ${e.message}`);
           }
-        } catch (e: any) {
-          logger.warn(`Failed to fetch contacts for bot ${bot.sessionName}: ${e.message}`);
-        }
-      })
-    );
+        })
+      );
+    }
 
     // Deduplicate by remoteJid
     const uniqueContacts = Array.from(new Map(allContacts.map(c => [c.id || c.remoteJid, c])).values());

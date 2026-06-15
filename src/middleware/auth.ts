@@ -81,11 +81,18 @@ export const authenticateToken = async (req: AuthenticatedRequest, res: Response
             });
           });
           
+          if (!user) {
+            throw new Error('User not found after JIT sync');
+          }
           logger.info({ clerkId: authState.userId, tenantId: user.tenantId }, 'JIT sync successful');
         } catch (syncErr: any) {
           logger.error({ err: syncErr.message }, 'JIT sync failed');
           return res.status(403).json(enrichError('AUTH_006', 'User account not synced — try signing out and back in'));
         }
+      }
+
+      if (!user) {
+        return res.status(403).json(enrichError('AUTH_006', 'User account not synced — try signing out and back in'));
       }
 
       req.user = { id: user.id, tenantId: user.tenantId };

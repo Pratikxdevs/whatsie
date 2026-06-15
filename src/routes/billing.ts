@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { enrichError } from '../errors/recovery';
 import { prisma } from '../db/prisma';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../config/logger';
@@ -41,7 +42,7 @@ router.get('/usage', async (req, res) => {
     return res.json({ usage: serialized });
   } catch (err: any) {
     logger.error({ err }, 'Billing usage error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -73,7 +74,7 @@ router.get('/usage/history', async (req, res) => {
     return res.json({ usage: serialized });
   } catch (err: any) {
     logger.error({ err }, 'Billing usage history error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 
@@ -103,7 +104,7 @@ router.get('/ai-logs', async (req, res) => {
     return res.json({ logs, total, page, limit });
   } catch (err: any) {
     logger.error({ err }, 'Billing AI logs error');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 

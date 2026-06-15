@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { enrichError } from '../errors/recovery';
 import { prisma } from '../db/prisma';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../config/logger';
@@ -162,7 +163,7 @@ router.put('/:id/default', async (req, res) => {
     });
   } catch (err: any) {
     logger.error({ err }, 'Credentials route error setting default');
-    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    return res.status(500).json(enrichError('SYS_005', 'Internal Server Error', err.message));
   }
 });
 

@@ -28,9 +28,10 @@ export function getOpenRouterClient(apiKey: string): OpenAI {
 }
 
 export async function resolveAiConfig(tenantId: string, userId?: string): Promise<{
-  provider: string;
+  provider: 'openrouter';
   model: string;
   apiKey: string;
+  baseURL: string;
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
@@ -56,7 +57,7 @@ export async function resolveAiConfig(tenantId: string, userId?: string): Promis
   }
 
   // Always use OpenRouter
-  const provider = 'openrouter';
+  const provider: 'openrouter' = 'openrouter';
 
   // Check user credential for openrouter
   let userApiKey: string | undefined;
@@ -82,6 +83,7 @@ export async function resolveAiConfig(tenantId: string, userId?: string): Promis
     provider,
     model,
     apiKey,
+    baseURL: 'https://openrouter.ai/api/v1',
     systemPrompt: botConfig.system_prompt || 'You are a helpful CRM assistant. Be concise and professional.',
     temperature: botConfig.temperature ?? 1,
     maxTokens: botConfig.maxTokens ?? 1024,
