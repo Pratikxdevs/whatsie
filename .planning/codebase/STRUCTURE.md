@@ -1,188 +1,217 @@
-# STRUCTURE
-**Updated:** 2026-06-15
-**Project:** CrmV2 — Whatsie WhatsApp AI CRM
+# STRUCTURE.md — Directory Layout & Organization
 
-## Top-Level Layout
-```
-CrmV2/
-├── src/                     # Backend TypeScript source
-├── frontend/                # React/Vite frontend
-├── prisma/                  # Schema + migrations
-├── platforms/               # Evolution API (vendored)
-├── docker/                  # Docker init scripts
-├── monitoring/              # Prometheus config
-├── .planning/               # GSD planning artifacts
-│   ├── codebase/            # This map
-│   ├── phases/              # Phase plans
-│   └── milestones/          # Archived milestone artifacts
-├── docker-compose.yml       # postgres, redis, prometheus, grafana, evolution-api
-├── tsconfig.json            # Backend TS config (strict, ES2022, CommonJS)
-└── package.json             # Backend deps + scripts
-```
+**Project:** CrmV2 — Multi-Platform AI CRM Bot SaaS  
+**Date:** 2026-06-15  
+**Root:** `/home/clutch/Desktop/Whatsie`
 
-## Backend: `src/`
+---
+
+## Top-Level Directory Structure
+
 ```
-src/
-├── index.ts                 # Server entrypoint: Express, Socket.IO, middleware, startup sync
+/home/clutch/Desktop/Whatsie/
+├── src/                          # Application source code
+│   ├── index.ts                  # Express server entry point (452 lines)
+│   ├── adapters/                 # External API adapters
+│   │   ├── evolutionApi.ts       #   Evolution API v2.3 client (642 lines)
+│   │   └── whatsapp.adapter.ts   #   WhatsApp adapter interface (1.6KB)
+│   ├── ai/                       # AI / LLM integration
+│   │   ├── orchestrator.ts       #   AI response generation (6.4KB)
+│   │   ├── structuralizer.ts     #   Structured output parsing (4.6KB)
+│   │   └── leadPromotion.ts      #   Lead scoring/promotion (1.6KB)
+│   ├── AiInteg/                  # AI Bridge API (legacy naming)
+│   │   └── endpoints.ts          #   AI endpoints (/api/ai/*)
+│   ├── api/                      # Legacy API directory (mostly empty)
+│   ├── billing/                  # Billing & usage tracking
+│   │   └── recordUsage.ts        #   BillingUsage recording
+│   ├── config/                   # Application configuration
+│   │   ├── logger.ts             #   Pino logger setup with PII redaction (74 lines)
+│   │   └── logger.test.ts        #   Logger tests
+│   ├── crm/                      # CRM business logic
+│   │   └── crmService.ts         #   Lead/conversation DB operations
+│   ├── db/                       # Database setup
+│   │   └── prisma.ts             #   Prisma client initialization (2 clients)
+│   ├── debug/                    # Debug server + tooling
+│   │   ├── server.ts             #   Debug HTTP server (port 9222)
+│   │   ├── dockerLogs.ts         #   Docker log streaming
+│   │   └── ...
+│   ├── errors/                   # Error handling
+│   │   └── recovery.ts           #   enrichError() utility
+│   ├── jobs/                     # Scheduled / recurring jobs
+│   │   └── stalledConversations.ts #   Conversation health check
+│   ├── metrics/                  # Prometheus metrics
+│   │   └── index.ts              #   prom-client metric definitions
+│   ├── middleware/               # Express middleware
+│   │   ├── auth.ts               #   authenticateToken (108 lines)
+│   │   ├── tenant.ts             #   AsyncLocalStorage context
+│   │   ├── rateLimit.ts          #   Rate limiter setup
+│   │   ├── validate.ts           #   Zod validation middleware
+│   │   ├── quota.ts              #   Plan quota enforcement
+│   │   ├── requestId.ts          #   X-Request-Id generation
+│   │   ├── requestLogger.ts      #   Request response logging
+│   │   ├── httpProxy.ts          #   Proxy wrapper for external APIs
+│   │   └── quota.test.ts         #   Quota tests
+│   ├── normalizer/               # Message normalization
+│   │   └── types.ts              #   NormalizedMessage type definition
+│   ├── queue/                    # Queue infrastructure
+│   │   └── setup.ts              #   Redis + BullMQ queue (30 lines)
+│   ├── rateLimiter/              # Rate limiter configs
+│   ├── router/                   # Response routing
+│   │   └── index.ts              #   ResponseRouter.dispatch()
+│   ├── routes/                   # API route handlers
+│   │   ├── workspaces.ts         #   Bot CRUD + instance management (17.9KB)
+│   │   ├── whatsapp-chat.ts      #   WhatsApp messages (10.6KB)
+│   │   ├── conversations.ts      #   Conversation management (12.4KB)
+│   │   ├── leads.ts              #   Lead management (5.4KB)
+│   │   ├── analytics.ts          #   Analytics queries (4.4KB)
+│   │   ├── billing.ts            #   Billing data (3.3KB)
+│   │   ├── credentials.ts        #   User credential storage (5.3KB)
+│   │   ├── webhooks.ts           #   Clerk + Evolution webhooks (4.9KB)
+│   │   └── gateway.ts            #   Internal gateway router (7.8KB)
+│   ├── schemas/                  # Zod validation schemas
+│   ├── services/                 # Business logic services
+│   │   ├── intentClassifier.ts   #   Rule-based intent detection (1.1KB)
+│   │   ├── ruleEngine.ts         #   Declarative rule evaluation (2KB)
+│   │   ├── workflowEngine.ts     #   Workflow execution (3.6KB)
+│   │   ├── sessionManager.ts     #   Conversation state management (1.8KB)
+│   │   ├── intentClassifier.test.ts
+│   │   ├── ruleEngine.test.ts
+│   │   ├── workflowEngine.test.ts
+│   │   └── sessionManager.test.ts
+│   ├── utils/                    # Shared utilities
+│   ├── workers/                  # Background job processors
+│   │   ├── index.ts              #   Main BullMQ worker (274 lines)
+│   │   ├── dlq.ts                #   Dead letter queue monitor
+│   │   └── handlers/             #   (empty — handler registration directory)
+│   └── __tests__/                # Test infrastructure + API tests
+│       ├── setup.ts              #   Global test setup (156 lines, mocks)
+│       ├── helpers.ts            #   Test helper utilities
+│       ├── smoke.test.ts         #   Health check smoke test
+│       ├── ai-api.test.ts        #   AI endpoint integration tests
+│       ├── analytics-api.test.ts #   Analytics endpoint tests
+│       ├── billing-usage.test.ts #   Billing endpoint tests
+│       ├── conversations-api.test.ts
+│       ├── leads-api.test.ts     #   Lead endpoint tests
+│       ├── normalizer.test.ts    #   Message normalizer tests
+│       ├── schemas.test.ts       #   Zod schema validation tests
+│       ├── utils.test.ts         #   Utility function tests
+│       ├── validate-middleware.test.ts
+│       ├── integration/          #   Integration test suites
+│       └── utils/                #   Test utility helpers
 │
-├── AiInteg/                 # AI integration layer
-│   ├── bridge.ts            # Main AI pipeline: normalize → persist → generate → dispatch
-│   ├── config.ts            # Resolve AI config per tenant (model, apiKey, systemPrompt)
-│   └── endpoints.ts         # /api/ai/* routes (verify, config, test, generate)
+├── prisma/                       # Database schema + migrations
+│   ├── schema.prisma             #   DB schema (14 models, 250 lines)
+│   ├── migrations/               #   Prisma migration history
+│   └── seed.ts                   #   Database seeder (31KB)
 │
-├── adapters/                # External service HTTP clients
-│   ├── evolutionApi.ts      # Evolution API client (createInstance, sendText, connectionState, etc.)
-│   └── whatsapp.adapter.ts  # Adapter wrapper for dispatching outbound messages
+├── dist/                         # Compiled JS output
+├── node_modules/                 # Dependencies
+├── platforms/                    # Platform submodules
+│   └── evolution-api/            #   Evolution API platform (full sub-repo)
 │
-├── ai/                      # AI intelligence layers
-│   ├── orchestrator.ts      # generateAiResponse() — calls OpenRouter, manages context
-│   ├── structuralizer.ts    # Extracts structured lead data from conversation
-│   └── leadPromotion.ts     # Promotes leads based on conversation stage
+├── docker/                       # Docker support files
+│   └── init-evolution-db.sql     #   Evolution DB init script
 │
-├── billing/
-│   └── recordUsage.ts       # Track message/AI token usage per tenant
+├── monitoring/                   # Observability configs
+│   └── prometheus.yml            #   Prometheus scrape configuration
 │
-├── config/
-│   ├── logger.ts            # Pino logger config, PII redaction, ring-buffer integration
-│   └── logger.test.ts       # Logger unit tests
-│
-├── crm/
-│   └── crmService.ts        # Core CRM operations (lead/conversation/message CRUD)
-│
-├── db/
-│   └── prisma.ts            # Prisma singleton + tenant-isolation $extends + DB event logging
-│
-├── debug/                   # Debug observability layer
-│   ├── server.ts            # Port 9222 debug server: ring buffer, SSE, NPM-style dashboard
-│   ├── prismaLogger.ts      # Prisma query extension (write to ring buffer)
-│   └── dockerLogs.ts        # Stream Docker container logs to ring buffer
-│
-├── errors/                  # Error system
-│   ├── codes.ts             # 32 error codes (AUTH/WA/API/DB/Q/WS/SYS) + createAppError()
-│   └── recovery.ts          # RecoveryAction map for all 32 codes + enrichError()
-│
-├── jobs/
-│   └── stalledConversations.ts  # Periodic job to close stale conversations
-│
-├── metrics/
-│   └── index.ts             # Prometheus metrics (counters, histograms, gauges)
-│
-├── middleware/
-│   ├── auth.ts              # authenticateToken() — API key + Clerk JWT + JIT sync
-│   ├── httpProxy.ts         # Proxy middleware (legacy)
-│   ├── quota.ts             # Per-tenant daily quota enforcement
-│   ├── rateLimit.ts         # express-rate-limit config (Redis store)
-│   ├── requestId.ts         # X-Request-ID header injection
-│   ├── requestLogger.ts     # 100x request logger (START + FINISH + auth method)
-│   ├── tenant.ts            # AsyncLocalStorage tenantContext
-│   └── validate.ts          # Zod schema validation middleware
-│
-├── normalizer/
-│   ├── types.ts             # NormalizedMessage interface
-│   └── whatsapp.ts          # Evolution API webhook → NormalizedMessage
-│
-├── queue/
-│   └── setup.ts             # BullMQ queue "whatsapp-messages" + Redis connection
-│
-├── rateLimiter/
-│   └── index.ts             # Platform-level rate limiting (per-bot token buckets)
-│
-├── router/
-│   └── index.ts             # ResponseRouter.dispatch() — routes outbound to correct adapter
-│
-├── routes/                  # Express route handlers
-│   ├── analytics.ts         # /api/analytics/* — dashboard stats, message volume, funnel
-│   ├── billing.ts           # /api/billing/* — usage records, AI logs
-│   ├── conversations.ts     # /api/conversations/* — fetch, send message, send media, close
-│   ├── credentials.ts       # /api/credentials/* — per-tenant platform/AI credentials
-│   ├── gateway.ts           # /api/gateway/webhook/whatsapp — inbound webhook handler
-│   ├── leads.ts             # /api/leads/* — CRUD, Kanban status update
-│   ├── webhooks.ts          # /api/webhooks/clerk — Clerk user sync events
-│   ├── whatsapp-chat.ts     # /api/chats/* — multi-bot chat aggregation
-│   └── workspaces.ts        # /api/workspaces/* — bot CRUD, start/stop, QR, AI key verify
-│
-├── schemas/                 # Zod validation schemas
-│   ├── auth/                # login, logout, register, refresh
-│   ├── bots/                # create, update
-│   ├── credentials/         # create, update
-│   ├── leads/               # create, update
-│   └── messages/            # send, media
-│
-├── services/                # Domain service layer
-│   ├── intentClassifier.ts  # Classify message intent from NLP rules
-│   ├── ruleEngine.ts        # Evaluate bot rules against incoming messages
-│   ├── sessionManager.ts    # Manage per-contact conversation sessions
-│   └── workflowEngine.ts    # Execute workflow steps for matched rules
-│
-├── utils/                   # Pure utility functions
-│   ├── crypto.ts, dates.ts, email.ts, env.ts
-│   ├── fileUpload.ts, phone.ts, sanitize.ts, url.ts
-│   └── index.ts             # Re-exports
-│
-├── workers/
-│   ├── index.ts             # WhatsApp message worker (BullMQ processor)
-│   └── dlq.ts               # Dead letter queue handler
-│
-└── __tests__/               # Integration + API test suite (18 test files)
-    ├── setup.ts             # Test environment setup
-    ├── helpers.ts           # Shared test helpers
-    ├── integration/         # Tenant isolation + WhatsApp pipeline E2E tests
-    └── utils/               # Utility unit tests
+├── docker-compose.yml            # Local infrastructure (Postgres, Redis, Evolution, Prometheus, Grafana)
+├── Dockerfile                    # App Docker build
+├── .dockerignore                 # Docker ignore rules
+├── .env                          # Environment variables (local dev)
+├── .env.example                  # Environment template
+├── package.json                  # Dependencies + scripts
+├── tsconfig.json                 # TypeScript config (strict, CommonJS, ES2022)
+├── vitest.config.ts              # Vitest config
+└── package-lock.json             # Lock file
 ```
 
-## Frontend: `frontend/src/`
-```
-frontend/src/
-├── App.tsx                  # Router + auth guard (Clerk SignedIn/SignedOut)
-│
-├── components/
-│   ├── analytics/           # Chart components (MessageVolume, ConversionFunnel, etc.)
-│   ├── auth/                # ProtectedRoute.tsx
-│   ├── billing/             # Usage charts, invoice table, plan card
-│   ├── bots/                # BotCard, BotGrid, AddBotModal, QRCodeModal, BotConfigForm
-│   ├── conversations/       # ConversationList, MessageThread, MessageInput, ContactSidebar
-│   ├── dashboard/           # ActivityFeed, BotHealthGrid, LeadPipelineFunnel
-│   ├── layout/              # AppLayout, Navbar
-│   ├── leads/               # KanbanBoard, LeadTable, LeadDetail, filters, bulk actions
-│   ├── settings/            # GeneralTab, APIKeysTab, BillingTab, TeamTab, ProfileTab
-│   ├── team/                # InviteModal, MemberCard
-│   ├── ui/                  # Shadcn/Radix primitives + custom (PhoneInput, DataStates, NoBotGate)
-│   ├── ErrorBoundary.tsx    # Global React error boundary
-│   └── ProviderAuth.tsx     # Clerk auth context wrapper
-│
-├── pages/
-│   ├── DashboardPage.tsx
-│   ├── BotsPage.tsx         # Bot management (create, start/stop, QR scan, configure)
-│   ├── ConversationsPage.tsx
-│   ├── LeadsPage.tsx
-│   ├── AnalyticsPage.tsx
-│   ├── BillingPage.tsx
-│   ├── SettingsPage.tsx
-│   └── LoginPage.tsx
-│
-├── services/
-│   ├── api.ts               # Axios instance + interceptors (auth, activity logging, recovery)
-│   ├── errorLog.ts          # Error logger: 32 codes, activityLog(), sendToDebug()
-│   ├── errorRecovery.ts     # ErrorRecoveryHandler: per-code UI dispatch (QR modal, settings, etc.)
-│   └── socketManager.ts     # Socket.IO singleton with tenant room + event logging
-│
-├── lib/
-│   ├── clerk-bridge.ts      # Non-React Clerk token + signOut bridge
-│   └── utils.ts             # cn() tailwind merge utility
-│
-└── hooks/                   # Custom React hooks
-```
+---
 
-## Key File Relationships
-```
-Request → auth.ts → tenantContext → prisma (filtered)
-                 → enrichError() → recovery.ts → {code, recovery}
+## Naming Conventions
 
-Inbound WA → gateway.ts → whatsapp normalizer → queue/setup.ts
-          → workers/index.ts → bridge.ts → orchestrator.ts → OpenRouter
-                            → evolutionApi.ts → WA response
+| Artifact | Convention | Example |
+|----------|-----------|---------|
+| Source files | `camelCase.ts` | `sessionManager.ts`, `crmService.ts` |
+| Route files | `kebab-case.ts` | `whatsapp-chat.ts` (mixed — historical) |
+| Test files | `*.test.ts` co-located | `sessionManager.test.ts` |
+| API test files | `*-api.test.ts` | `analytics-api.test.ts` |
+| Database models | PascalCase | `Tenant`, `User`, `BillingUsage` |
+| Database fields | camelCase | `tenantId`, `createdAt` |
+| Express exports | `*Router` | `workspacesRouter`, `webhookRouter` |
+| Interfaces | PascalCase with `Options`/`Props` suffix | `SendTextOptions`, `AuthenticatedRequest` |
+| Services | PascalCase exports | `SessionManager`, `RuleEngine`, `WorkflowEngine` |
 
-Any error → addLog() → debug/server.ts ring buffer → SSE → 9222 dashboard
-Frontend error → errorLog.activityLog() → POST /api/log on 9222
-               → errorRecovery.handleEnrichedError() → toast/modal/redirect
+---
+
+## Key File Locations
+
+### Entry Points
+- **Express Server**: `src/index.ts:405` — `server.listen(PORT)`
+- **BullMQ Worker**: `src/workers/index.ts:139` — `new Worker('whatsapp-messages', ...)`
+- **Debug Server**: `src/debug/server.ts` — port 9222
+- **Database Seed**: `prisma/seed.ts`
+
+### Configuration
+- **Logger**: `src/config/logger.ts`
+- **Prisma Client**: `src/db/prisma.ts`
+- **BullMQ Queue**: `src/queue/setup.ts`
+- **Redis Connection**: `src/queue/setup.ts:8` — shared `redisConnection` export
+
+### Authentication
+- **Express Middleware**: `src/middleware/auth.ts:34` — `authenticateToken`
+- **Socket.IO Auth**: `src/index.ts:175` — `io.use()` middleware
+- **Tenant Context**: `src/middleware/tenant.ts`
+
+### Message Processing
+- **Pipeline Controller**: `src/workers/index.ts:141` — worker processor function
+- **Intent Classification**: `src/services/intentClassifier.ts:9` — `IntentClassifier.classify()`
+- **Rule Engine**: `src/services/ruleEngine.ts:35` — `RuleEngine.evaluate()`
+- **Workflow Engine**: `src/services/workflowEngine.ts` — `WorkflowEngine.checkTrigger()`, `processStep()`, `startWorkflow()`
+- **Session Manager**: `src/services/sessionManager.ts` — `getWorkflowState()`, `pushMessage()`, `setWorkflowState()`
+
+### AI Integration
+- **ORCHESTRATOR**: `src/ai/orchestrator.ts`
+- **Structuralizer**: `src/ai/structuralizer.ts`
+- **Lead Promotion**: `src/ai/leadPromotion.ts`
+- **AI Bridge Routes**: `src/AiInteg/endpoints.ts`
+
+### External Integrations
+- **Evolution API Client**: `src/adapters/evolutionApi.ts`
+- **WhatsApp Adapter**: `src/adapters/whatsapp.adapter.ts`
+- **Webhook Handler**: `src/routes/webhooks.ts`
+
+### Monitoring
+- **Metrics Definition**: `src/metrics/index.ts`
+- **Health Check**: `src/index.ts:325` — `/health`, `src/index.ts:329` — `/ready`
+- **Prometheus Endpoint**: `src/index.ts:143` — `/metrics`
+- **Debug Logging**: `src/debug/server.ts`
+
+---
+
+## File Size Distribution (Key Files)
+
+| File | Lines | Size |
+|------|-------|------|
+| `src/adapters/evolutionApi.ts` | 642 | 22.4KB |
+| `src/index.ts` | 452 | 15.4KB |
+| `src/routes/workspaces.ts` | 476 | 17.9KB |
+| `src/routes/conversations.ts` | 344 | 12.4KB |
+| `src/routes/whatsapp-chat.ts` | 294 | 10.6KB |
+| `src/middleware/httpProxy.ts` | 316 | 11.6KB |
+| `src/workers/index.ts` | 274 | 11.2KB |
+| `src/__tests__/setup.ts` | 156 | 5.4KB |
+| `src/middleware/auth.ts` | 108 | 4.1KB |
+| `src/middleware/requestLogger.ts` | 106 | 4.1KB |
+| `prisma/schema.prisma` | 250 | 7.5KB |
+| `prisma/seed.ts` | 810 | 31KB |
+
+---
+
+## Module Aliases
+
+Configured via `module-alias`:
+```typescript
+// Allows: import { foo } from '@/config/logger'
+require('module-alias').addAlias('@', __dirname);
 ```
