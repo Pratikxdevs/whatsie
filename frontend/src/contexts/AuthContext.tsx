@@ -19,14 +19,18 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (companyName: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (name: string, email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { user: clerkUser, isLoaded: userLoaded } = useUser();
-  const { isSignedIn, getToken } = useClerkAuth();
-  const { signOut, openSignIn, openSignUp } = useClerk();
+  const { isSignedIn, getToken, isLoaded: clerkLoaded } = useClerkAuth();
+
+  const { signOut, openSignIn, openSignUp, client, setActive } = useClerk();
   const navigate = useNavigate();
   const wasSignedIn = useRef(false);
 
@@ -49,6 +53,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (_companyName: string, _email: string, _password: string) => {
     openSignUp();
     return { success: true };
+  };
+
+  const signInWithEmail = async (email: string, password: string) => {
+    if (!client) throw new Error("Clerk not loaded");
+    const res = await client.signIn.create({ identifier: email, password });
+    if (res.status === 'complete') {
+      await setActive({ session: res.createdSessionId });
+    } else {
+      throw new Error("Additional verification steps required.");
+    }
+  };
+
+  const signUpWithEmail = async (name: string, email: string, password: string) => {
+    if (!client) throw new Error("Clerk not loaded");
+    const res = await client.signUp.create({ firstName: name, emailAddress: email, password });
+    if (res.status === 'complete') {
+      await setActive({ session: res.createdSessionId });
+    } else if (res.status === 'missing_requirements') {
+      await client.signUp.prepareEmailAddressVerification();
+      throw new Error("Verification code sent to email. Please complete verification.");
+    }
+  };
+
+  const loginWithGoogle = () => {
+    if (!client) return;
+    client.signIn.authenticateWithRedirect({
+      strategy: "oauth_google",
+      redirectUrl: "/sso-callback",
+      redirectUrlComplete: "/"
+    });
   };
 
   const logout = () => {
@@ -80,6 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        signInWithEmail,
+        signUpWithEmail,
+        loginWithGoogle,
       }}
     >
       {children}
